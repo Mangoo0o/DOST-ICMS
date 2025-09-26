@@ -65,6 +65,44 @@ function getSectionIcon(section) {
   return sectionIcons[section] || <MdScience className="text-gray-400 w-10 h-10" />;
 }
 
+// Normalize common variations to canonical calibration type names
+function normalizeCalibrationType(rawType) {
+  if (!rawType) return '';
+  const t = String(rawType).trim().toLowerCase();
+  if (t.includes('weighing') && t.includes('scale')) return 'Weighing Scale';
+  if (t === 'thermometer') return 'Thermometer';
+  if (t.includes('thermo') && t.includes('hygro')) return 'Thermohygrometer';
+  if (t.includes('test') && t.includes('weight')) return 'Test Weights';
+  if (t.includes('sphyg')) return 'Sphygmomanometer';
+  return rawType; // fallback to original
+}
+
+// Centralized router for calibration pages
+function navigateToCalibration(navigate, type, sample, currentStep) {
+  const normalized = normalizeCalibrationType(type);
+  const serialNumber = sample.serial_no;
+  const equipmentId = sample.id;
+  switch (normalized) {
+    case 'Weighing Scale':
+      navigate('/uncertainty-calculation', { state: { serialNumber, equipmentId, currentStep } });
+      return true;
+    case 'Thermometer':
+      navigate('/thermometer-uncertainty-calculator', { state: { serialNumber, equipmentId, currentStep } });
+      return true;
+    case 'Thermohygrometer':
+      navigate('/thermohygrometer-uncertainty-calculator', { state: { serialNumber, equipmentId, currentStep } });
+      return true;
+    case 'Test Weights':
+      navigate('/test-weights-calibration', { state: { serialNumber, equipmentId, currentStep } });
+      return true;
+    case 'Sphygmomanometer':
+      navigate('/sphygmomanometer-calibration', { state: { serialNumber, equipmentId, currentStep } });
+      return true;
+    default:
+      return false;
+  }
+}
+
 function daysBetween(date1, date2) {
   const d1 = new Date(date1);
   const d2 = new Date(date2);
@@ -215,10 +253,12 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onViewDetails, sam
         toast.error('Calibration for this equipment type is not supported.');
         return;
       }
-      // No calibration data, show modal or handle as needed
-      toast.error('No calibration data found for this equipment. You can start a new calibration.');
+      // No calibration data: route based on the sample type
+      if (navigateToCalibration(navigate, sample.type, sample)) return;
+      toast.error('No calibration data found and equipment type is not supported.');
     } catch (e) {
-      // No calibration data, show modal or handle as needed
+      // On error, still try to route based on sample type
+      if (navigateToCalibration(navigate, sample.type, sample)) return;
       console.error('Error fetching calibration record:', e);
       toast.error('Unable to load calibration data. Please try again.');
     }
@@ -325,7 +365,6 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onViewDetails, sam
                     <table className="min-w-full bg-white border border-gray-200 rounded-lg">
                       <thead>
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b transition-colors duration-200 hover:bg-gray-100">Scope</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b transition-colors duration-200 hover:bg-gray-100">Type of Equipment</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b transition-colors duration-200 hover:bg-gray-100">Range/Capacity</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b transition-colors duration-200 hover:bg-gray-100">Serial Number</th>
@@ -353,7 +392,6 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onViewDetails, sam
                               boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)"
                             }}
                           >
-                            <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap transition-colors duration-200 hover:text-[#2a9dab]">{item.section}</td>
                             <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap transition-colors duration-200">{item.type}</td>
                             <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap transition-colors duration-200">{item.range}</td>
                             <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap transition-colors duration-200">{item.serial_no || 'N/A'}</td>
@@ -653,19 +691,8 @@ const Calibration = () => {
         <div className="bg-white p-8 rounded-lg shadow-md w-full mb-8 flex flex-col">
           {/* Page Header */}
           {!selectedReservation && (
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center mb-6">
               <h1 className="text-2xl font-semibold text-gray-800">Calibration Management</h1>
-              <button
-                onClick={() => fetchReservations(true)}
-                disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 bg-[#2a9dab] text-white rounded-lg hover:bg-[#238a91] disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                title="Refresh calibration data"
-              >
-                <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                {loading ? 'Refreshing...' : 'Refresh'}
-              </button>
             </div>
           )}
           
@@ -1531,11 +1558,13 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
         toast.error('Calibration for this equipment type is not supported.');
         return;
       }
-      // No calibration data, show modal
+      // No calibration data: navigate by sample type
+      if (navigateToCalibration(navigate, sample.type, sample)) return;
       setSelectedEquipment(sample);
       setIsCalibModalOpen(true);
     } catch (e) {
-      // No calibration data, show modal
+      // On error: attempt to navigate by type, otherwise show modal
+      if (navigateToCalibration(navigate, sample.type, sample)) return;
       setSelectedEquipment(sample);
       setIsCalibModalOpen(true);
     }
@@ -1642,7 +1671,6 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
                 <table className="min-w-full bg-white border border-gray-200 rounded-lg">
                   <thead>
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b transition-colors duration-200 hover:bg-gray-100">Scope</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b transition-colors duration-200 hover:bg-gray-100">Type of Equipment</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b transition-colors duration-200 hover:bg-gray-100">Range/Capacity</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b transition-colors duration-200 hover:bg-gray-100">Serial Number</th>
@@ -1670,7 +1698,6 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
                           boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)"
                         }}
                       >
-                        <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap transition-colors duration-200 hover:text-[#2a9dab]">{item.section}</td>
                         <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap transition-colors duration-200">{item.type}</td>
                         <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap transition-colors duration-200">{item.range}</td>
                         <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap transition-colors duration-200">{item.serial_no || 'N/A'}</td>

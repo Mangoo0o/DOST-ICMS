@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MdScience, MdCalculate, MdInfo, MdOutlineDeviceHub, MdArrowBack } from 'react-icons/md';
+import { MdScience, MdCalculate, MdInfo, MdOutlineDeviceHub } from 'react-icons/md';
 import { FaBalanceScale } from 'react-icons/fa';
 import { Toaster, toast } from 'react-hot-toast';
 import './uncertainty-print.css';
@@ -196,6 +196,7 @@ function WeighingScaleCalculation() {
   console.log('Weighing Scale calibration - Serial Number:', passedSerialNumber);
   const [currentStep, setCurrentStep] = useState(1);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showSimpleCloseConfirm, setShowSimpleCloseConfirm] = useState(false);
 
   // Calibration confirmation state
   const [showCalibrationConfirmation, setShowCalibrationConfirmation] = useState(false);
@@ -1405,7 +1406,7 @@ const u_rep_all = stddevRepeat;
   } = useBackNavigation({
     hasUnsavedChanges,
     confirmationTitle: "Leave Calibration?",
-    confirmationMessage: "You have unsaved changes in your weighing scale calibration. Are you sure you want to leave? Your progress will be lost.",
+    confirmationMessage: "Are you sure you want to leave?  Your progress will be lost.",
     confirmationType: "warning",
     onSave: handleAutoSave
   });
@@ -1510,14 +1511,14 @@ const u_rep_all = stddevRepeat;
       <Toaster position="top-right" />
       <div className="w-full mx-auto">
         <div className="bg-white p-8 rounded-lg shadow-md w-full mb-8 border border-blue-100 relative">
-          {/* Back Button */}
+          {/* Close (X) Button */}
           <button
-            onClick={handleBackClick}
-            className="absolute top-4 right-4 flex items-center gap-2 px-4 py-2 bg-[#2a9dab] text-white hover:bg-[#238a91] rounded-lg shadow-md transition-all duration-200 hover:shadow-lg"
-            title="Go back to calibration list"
+            onClick={() => setShowSimpleCloseConfirm(true)}
+            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-lg h-8 w-8 flex items-center justify-center rounded hover:bg-gray-200 transition-colors"
+            title="Close"
+            aria-label="Close"
           >
-            <MdArrowBack className="w-5 h-5" />
-            <span className="text-sm font-medium">Back</span>
+            ✕
           </button>
           
           <div className="flex items-center mb-2 pr-20">
@@ -1677,6 +1678,20 @@ const u_rep_all = stddevRepeat;
         cancelText="Cancel"
         isLoading={isCalibrationLoading}
       />
+
+      {/* Simple Close Confirmation Modal (for X button) */}
+      {showSimpleCloseConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Confirm Cancellation</h2>
+            <p className="text-gray-600 mb-6">Are you sure you want to cancel the calibration?</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setShowSimpleCloseConfirm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">Cancel</button>
+              <button onClick={() => { setShowSimpleCloseConfirm(false); handleConfirmBack(); }} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

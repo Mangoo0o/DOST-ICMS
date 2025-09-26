@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
-import { apiService } from '../services/api';
+import api, { apiService } from '../services/api';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import DatePicker from 'react-datepicker';
@@ -123,14 +123,50 @@ const ClientInfoModal = ({ isOpen, onClose, onConfirm, clientInfo, onClientInfoC
                     </div>
                     
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                        <textarea
-                            value={clientInfo.address || ''}
-                            onChange={(e) => onClientInfoChange('address', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
-                            placeholder="Enter complete address"
-                            rows={3}
-                        />
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Province</label>
+                                <select
+                                    value={clientInfo.province || ''}
+                                    onChange={(e) => onClientInfoChange('province', e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] text-sm"
+                                >
+                                    <option value="">Select Province</option>
+                                    {getProvinces().map((prov) => (
+                                        <option key={prov} value={prov}>{prov}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">City/Municipality</label>
+                                <select
+                                    value={clientInfo.city || ''}
+                                    onChange={(e) => onClientInfoChange('city', e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] text-sm"
+                                    disabled={!clientInfo.province}
+                                >
+                                    <option value="">Select City/Municipality</option>
+                                    {getCities(clientInfo.province).map((city) => (
+                                        <option key={city} value={city}>{city}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Barangay</label>
+                                <select
+                                    value={clientInfo.barangay || ''}
+                                    onChange={(e) => onClientInfoChange('barangay', e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] text-sm"
+                                    disabled={!clientInfo.province || !clientInfo.city}
+                                >
+                                    <option value="">Select Barangay</option>
+                                    {getBarangays(clientInfo.province, clientInfo.city).map((brgy) => (
+                                        <option key={brgy} value={brgy}>{brgy}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
@@ -1426,6 +1462,10 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onEdit, onAccept, 
   const [details, setDetails] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState('');
 
   useEffect(() => {
     if (isOpen && reservation) {
@@ -1445,6 +1485,34 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onEdit, onAccept, 
       fetchDetails();
     }
   }, [isOpen, reservation]);
+  const openPdfPreview = async () => {
+    if (!details?.reference_number) return;
+    setPdfError('');
+    setPdfLoading(true);
+    setIsPdfModalOpen(true);
+    try {
+      const response = await api.get(`/api/request/get_attachment.php?ref=${encodeURIComponent(details.reference_number)}` , { responseType: 'blob' });
+      const contentType = response.headers['content-type'] || 'application/pdf';
+      const blob = new Blob([response.data], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      setPdfBlobUrl(url);
+    } catch (e) {
+      console.error('Failed to load PDF blob', e);
+      setPdfError('Failed to load PDF. You can try opening it in a new tab.');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const closePdfPreview = () => {
+    if (pdfBlobUrl) {
+      URL.revokeObjectURL(pdfBlobUrl);
+    }
+    setPdfBlobUrl(null);
+    setIsPdfModalOpen(false);
+    setPdfError('');
+  };
+
 
 
   if (!isOpen) return null;
@@ -1521,7 +1589,18 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onEdit, onAccept, 
             </div>
           )}
         </div>
-        <div className="mt-4 flex justify-end gap-3 p-2">
+        <div className="mt-4 flex items-center justify-between p-2">
+          <div>
+            {details?.attachment_file_path && details?.reference_number && (
+              <button
+                onClick={openPdfPreview}
+                className="inline-flex items-center px-4 py-2 text-[#2a9dab] border border-[#2a9dab] rounded-lg hover:bg-[#e0f7fa] font-medium"
+              >
+                View PDF
+              </button>
+            )}
+          </div>
+          <div className="flex justify-end gap-3">
             <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium">Close</button>
             {user?.role !== 'client' && details?.status === 'pending' && onAccept && (
               <button 
@@ -1542,8 +1621,45 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onEdit, onAccept, 
             >
                 Edit
             </button>
+          </div>
         </div>
       </div>
+
+      {/* PDF Modal */}
+      {isPdfModalOpen && details?.reference_number && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center px-4 py-3 border-b">
+              <h3 className="text-lg font-semibold text-gray-800">Attachment Preview</h3>
+              <button onClick={closePdfPreview} className="text-gray-500 hover:text-gray-700 text-xl">✕</button>
+            </div>
+            <div className="flex-1 overflow-auto p-3">
+              {pdfLoading && (
+                <div className="h-[80vh] w-full flex items-center justify-center text-gray-600">Loading PDF...</div>
+              )}
+              {!pdfLoading && pdfError && (
+                <div className="h-[80vh] w-full flex flex-col items-center justify-center text-red-600 text-sm">
+                  <p className="mb-3">{pdfError}</p>
+                  <a
+                    href={`${api.defaults.baseURL}/api/request/get_attachment.php?ref=${encodeURIComponent(details.reference_number)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center px-4 py-2 text-[#2a9dab] border border-[#2a9dab] rounded-lg hover:bg-[#e0f7fa] font-medium"
+                  >
+                    Open in new tab
+                  </a>
+                </div>
+              )}
+              {!pdfLoading && !pdfError && pdfBlobUrl && (
+                <iframe title="Attachment PDF" src={pdfBlobUrl} className="w-full h-[80vh]" />
+              )}
+            </div>
+            <div className="px-4 py-3 flex justify-end">
+              <button onClick={closePdfPreview} className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1781,7 +1897,9 @@ const Reservations = () => {
       contact_number: parsedClientFromPdf?.contact_number || '',
       email: parsedClientFromPdf?.email || '',
       company: parsedClientFromPdf?.company || '',
-      address: parsedAddressFromPdf?.address_line || ''
+      province: parsedAddressFromPdf?.province || '',
+      city: parsedAddressFromPdf?.city || '',
+      barangay: parsedAddressFromPdf?.barangay || ''
     };
     
     console.log('Prepared clientInfo:', clientInfo);
@@ -1814,9 +1932,18 @@ const Reservations = () => {
     }));
     
     // Update the parsed address data
+    const province = editableClientInfo.province || '';
+    const city = editableClientInfo.city || '';
+    const barangay = editableClientInfo.barangay || '';
+    const parts = [barangay, city, province].filter(Boolean);
+    const addressLine = parts.join(', ');
+
     setParsedAddressFromPdf(prev => ({
       ...prev,
-      address_line: editableClientInfo.address
+      province,
+      city,
+      barangay,
+      address_line: addressLine
     }));
     
     setIsClientInfoModalOpen(false);
