@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@iconify/react": "^6.0.0",
+    "@mui/icons-material": "^7.1.2",
+    "@mui/material": "^7.1.2",
+    "date-fns": "^4.1.0",
+    "framer-motion": "^12.18.1",
+    "jwt-decode": "^4.0.0",
+    "react-circular-progressbar": "^2.2.0",
+    "react-datepicker": "^8.4.0",
+    "react-hot-toast": "^2.5.2",
+    "react-select": "^5.10.1"
+  }
+}

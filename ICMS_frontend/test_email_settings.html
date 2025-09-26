@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Email Settings Test</title>
+</head>
+<body>
+    <h1>Email Settings Test</h1>
+    <p>This is a simple test to verify that the email settings API is working correctly.</p>
+    
+    <script>
+        // Test the API endpoint
+        fetch('http://localhost:8000/api/settings/email_settings.php', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            console.log('Response status:', response.status);
+            return response.text();
+        })
+        .then(data => {
+            console.log('Response data:', data);
+            try {
+                const jsonData = JSON.parse(data);
+                console.log('Parsed JSON:', jsonData);
+            } catch (e) {
+                console.error('Failed to parse JSON:', e);
+                console.log('Raw response:', data);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    </script>
+</body>
+</html>
+

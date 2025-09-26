@@ -1,0 +1,25 @@
+To install all dependencies:
+
+cd ICMS_frontend && npm list pdfjs-dist
+
+Frontend:
+cd ICMS_frontend
+npm install
+npm install framer-motion react-hot-toast react-datepicker chart.js react-chartjs-2 @mui/material @emotion/react @emotion/styled @mui/icons-material date-fns
+
+Backend:
+cd ICMS_backend
+composer install
+composer require setasign/fpdf setasign/fpdi
+
+run SETTING: php ICMS_backend/setup_settings.php
+
+To start the frontend:
+cd ICMS_frontend && npm run dev
+
+To start the backend:
+cd ICMS_backend && php -S localhost:8000
+
+
+
+

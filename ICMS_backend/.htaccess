@@ -1,0 +1,30 @@
+RewriteEngine On
+
+# Allow direct access to PHP files
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^.*\.php$ - [L]
+
+# Route all other requests to api/index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ api/index.php [QSA,L]
+
+# Prevent directory listing
+Options -Indexes
+
+# Set security headers
+Header set X-Content-Type-Options "nosniff"
+Header set X-Frame-Options "SAMEORIGIN"
+Header set X-XSS-Protection "1; mode=block"
+
+# Protect sensitive files
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# PHP settings
+php_value upload_max_filesize 10M
+php_value post_max_size 10M
+php_value max_execution_time 300
+php_value max_input_time 300 

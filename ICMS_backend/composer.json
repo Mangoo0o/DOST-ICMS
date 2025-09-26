@@ -1,0 +1,19 @@
+{
+    "name": "icms/backend",
+    "description": "Inventory and Customer Management System Backend",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "firebase/php-jwt": "^6.0",
+        "ext-pdo": "*",
+        "ext-json": "*",
+        "setasign/fpdf": "^1.8",
+        "setasign/fpdi": "^2.6",
+        "phpmailer/phpmailer": "^6.10"
+    },
+    "autoload": {
+        "psr-4": {
+            "ICMS\\": "src/"
+        }
+    }
+}
