@@ -410,13 +410,13 @@ $pdf->SetFont('Arial', '', 7);
 // Display 10 trials in 2 columns (5 trials each)
 for ($i = 0; $i < 5; $i++) {
     // Left side - trials 1-5
-    $reading = isset($repeatabilityReadings[$i]) ? number_format($repeatabilityReadings[$i], 3) : '0.000';
+    $reading = isset($repeatabilityReadings[$i]) && is_numeric($repeatabilityReadings[$i]) ? number_format((float)$repeatabilityReadings[$i], 3) : '0.000';
     $pdf->Cell($colWidths[0], 5, ($i + 1), 1, 0, 'C');
     $pdf->Cell($colWidths[1], 5, $reading, 1, 0, 'C');
     
     // Right side - trials 6-10
     $rightIndex = $i + 5;
-    $rightReading = isset($repeatabilityReadings[$rightIndex]) ? number_format($repeatabilityReadings[$rightIndex], 3) : '0.000';
+    $rightReading = isset($repeatabilityReadings[$rightIndex]) && is_numeric($repeatabilityReadings[$rightIndex]) ? number_format((float)$repeatabilityReadings[$rightIndex], 3) : '0.000';
     $pdf->Cell($colWidths[0], 5, ($rightIndex + 1), 1, 0, 'C');
     $pdf->Cell($colWidths[1], 5, $rightReading, 1, 1, 'C');
 }
@@ -430,7 +430,7 @@ if (count($repeatabilityReadings) > 1) {
 }
 
 $pdf->SetFont('Arial', 'B', 10); // Increased from 8 to 10 for bigger font
-$pdf->Cell(0, 5, 'Std. Deviation: ' . number_format($stdDev, 6) . ' g', 0, 1, 'C'); // Center aligned without box
+$pdf->Cell(0, 5, 'Std. Deviation: ' . (is_numeric($stdDev) ? number_format((float)$stdDev, 6) : '0.000000') . ' g', 0, 1, 'C'); // Center aligned without box
 $pdf->Ln(0.5); // Increased from 0.2 to 0.5
 
 // Eccentricity Table - Compact with diagram
@@ -454,8 +454,8 @@ $pdf->SetFont('Arial', '', 7);
 $eccRows = $input_data['eccRows'] ?? [];
 $positions = ['Center', 'Front Left', 'Back Left', 'Back Right', 'Front Right', 'Center'];
 for ($i = 0; $i < 6; $i++) {
-    $indication = isset($eccRows[$i]['indication']) ? number_format($eccRows[$i]['indication'], 3) : '0.000';
-    $error = isset($eccRows[$i]['error']) ? number_format($eccRows[$i]['error'], 3) : '0.000';
+    $indication = isset($eccRows[$i]['indication']) && is_numeric($eccRows[$i]['indication']) ? number_format((float)$eccRows[$i]['indication'], 3) : '0.000';
+    $error = isset($eccRows[$i]['error']) && is_numeric($eccRows[$i]['error']) ? number_format((float)$eccRows[$i]['error'], 3) : '0.000';
     $pdf->SetXY($tableX, $pdf->GetY());
     $pdf->Cell($colWidths[0], 5, $positions[$i], 1, 0, 'C'); // Reduced height from 6 to 5
     $pdf->Cell($colWidths[1], 5, $indication, 1, 0, 'C'); // Reduced height from 6 to 5
@@ -617,10 +617,10 @@ $pdf->SetFont('Arial', '', 7); // Increased from 6 to 7
 
 $linearityResults = $input_data['linearityResults'] ?? [];
 for ($i = 0; $i < 6; $i++) {
-    $load = isset($linearityResults[$i]['load']) ? number_format($linearityResults[$i]['load'], 3) : '0.000'; // Reduced decimal places
-    $indication = isset($linearityResults[$i]['indication']) ? number_format($linearityResults[$i]['indication'], 3) : '0.000';
-    $error = isset($linearityResults[$i]['error']) ? number_format($linearityResults[$i]['error'], 3) : '0.000';
-    $uncertainty = isset($result_data['U_expanded']) ? number_format($result_data['U_expanded'], 4) : '0.0000'; // Reduced decimal places
+    $load = isset($linearityResults[$i]['load']) && is_numeric($linearityResults[$i]['load']) ? number_format((float)$linearityResults[$i]['load'], 3) : '0.000'; // Reduced decimal places
+    $indication = isset($linearityResults[$i]['indication']) && is_numeric($linearityResults[$i]['indication']) ? number_format((float)$linearityResults[$i]['indication'], 3) : '0.000';
+    $error = isset($linearityResults[$i]['error']) && is_numeric($linearityResults[$i]['error']) ? number_format((float)$linearityResults[$i]['error'], 3) : '0.000';
+    $uncertainty = isset($result_data['U_expanded']) && is_numeric($result_data['U_expanded']) ? number_format((float)$result_data['U_expanded'], 4) : '0.0000'; // Reduced decimal places
     $pdf->Cell($colWidths[0], 5, ($i + 1), 1, 0, 'C'); // Reduced height from 6 to 5
     $pdf->Cell($colWidths[1], 5, $load, 1, 0, 'C'); // Reduced height from 6 to 5
     $pdf->Cell($colWidths[2], 5, $indication, 1, 0, 'C'); // Reduced height from 6 to 5
@@ -679,7 +679,7 @@ for ($i = 0; $i <= 5; $i++) {
     $value = $minError + ($errorRange * $i / 5);
     $y = $graphY + $graphHeight - 10 - ($i * ($graphHeight - 20) / 5);
     $pdf->SetXY($graphX + 15, $y - 2);
-    $pdf->Cell(10, 4, number_format($value, 3), 0, 0, 'R');
+    $pdf->Cell(10, 4, is_numeric($value) ? number_format((float)$value, 3) : '0.000', 0, 0, 'R');
     
     // Draw horizontal grid line
     $pdf->SetDrawColor(200, 200, 200);
@@ -777,7 +777,7 @@ for ($i = 0; $i <= 5; $i++) {
     $value = ($maxLoad * $i / 5);
     $x = $graphX + 20 + ($i * ($graphWidth - 30) / 5);
     $pdf->SetXY($x - 10, $graphY + $graphHeight - 5);
-    $pdf->Cell(20, 4, number_format($value, 1), 0, 0, 'C');
+    $pdf->Cell(20, 4, is_numeric($value) ? number_format((float)$value, 1) : '0.0', 0, 0, 'C');
     
     // Draw vertical grid line
     $pdf->SetDrawColor(200, 200, 200);

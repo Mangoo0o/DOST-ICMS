@@ -408,16 +408,16 @@ const Dashboard = () => {
               </button>
             </div>
           </div>
-          <div className="w-full rounded-xl p-2 pb-8">
-            <div className="border rounded-xl overflow-hidden mb-4">
+          <div className="w-full rounded-xl p-2 pb-8 overflow-visible">
+            <div className="border rounded-xl overflow-visible mb-4">
               <div className="grid grid-cols-7 text-xs text-gray-500 bg-gray-50">
                 {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => (
                   <div key={d} className="px-3 py-2 border-b">{d}</div>
                 ))}
               </div>
-              <div className="grid">
+              <div className="grid overflow-visible">
                 {monthMeta.weeks.map((week, wi) => (
-                  <div key={wi} className="grid grid-cols-7">
+                  <div key={wi} className="grid grid-cols-7 overflow-visible">
                     {week.map((day, di) => {
                       const key = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
                       const isCurrentMonth = day.getMonth() === monthMeta.month;
@@ -425,7 +425,7 @@ const Dashboard = () => {
                       return (
                         <div
                           key={key}
-                          className={`h-20 border p-2 relative ${isCurrentMonth ? '' : 'bg-gray-100'}`}
+                          className={`h-20 border p-2 relative overflow-visible ${isCurrentMonth ? '' : 'bg-gray-100'}`}
                           onMouseEnter={() => setHoveredDayKey(key)}
                           onMouseLeave={() => setHoveredDayKey(null)}
                         >
@@ -443,7 +443,7 @@ const Dashboard = () => {
                             const visible = items.slice(0, 5);
                             const hasMore = items.length > 5;
                             return (
-                              <div className="absolute z-30 top-6 left-2 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-2xl p-3 text-xs w-72">
+                              <div className="absolute z-50 top-6 left-2 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-2xl p-3 text-xs w-72">
                                 <div className="flex items-center justify-between mb-2">
                                   <div className="font-semibold text-gray-800">Requests ({items.length})</div>
                                   <div className="text-[10px] text-gray-400">{key}</div>
