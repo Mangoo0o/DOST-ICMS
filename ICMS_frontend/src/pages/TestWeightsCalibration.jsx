@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MdScience, MdCalculate, MdInfo, MdOutlineDeviceHub, MdSpeed, MdArrowBack } from 'react-icons/md';
+import { MdScience, MdCalculate, MdInfo, MdOutlineDeviceHub, MdSpeed } from 'react-icons/md';
 import { FaBalanceScale } from 'react-icons/fa';
 import { Toaster, toast } from 'react-hot-toast';
 import './uncertainty-print.css';
@@ -189,6 +189,13 @@ function TestWeightsCalibration() {
   const passedSampleId = location.state?.sampleId || null; // sampleId is actually sampleId from navigation
   const [currentStep, setCurrentStep] = useState(1);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showSimpleCloseConfirm, setShowSimpleCloseConfirm] = useState(false);
+  
+  // Next-step confirmation state
+  const [showNextConfirm, setShowNextConfirm] = useState(false);
+  const [isNextSaving, setIsNextSaving] = useState(false);
+  const [nextConfirmTitle, setNextConfirmTitle] = useState('Proceed to next step?');
+  const [nextConfirmMessage, setNextConfirmMessage] = useState('Your progress will be saved before moving to the next step.');
 
   // Step 1: Preparation
   const [preparation, setPreparation] = useState({
@@ -205,7 +212,7 @@ function TestWeightsCalibration() {
     pressure: '',
     airDensity: '',
   });
-  const [sampleId, setEquipmentId] = useState(passedEquipmentId);
+  const [sampleId, setSampleId] = useState(passedEquipmentId);
 
   // Add state for selected reference entry
   const [selectedReference, setSelectedReference] = useState(null);
@@ -223,7 +230,7 @@ function TestWeightsCalibration() {
           testWeightNominal: eq.capacity || '',
           testWeightClass: eq.class || '',
         }));
-        setEquipmentId(eq.id || null);
+        setSampleId(eq.id || null);
         setSampleDataLoaded(true);
       });
     } else if (passedSerialNumber) {
@@ -235,7 +242,7 @@ function TestWeightsCalibration() {
           testWeightNominal: eq.capacity || '',
           testWeightClass: eq.class || '',
         }));
-        setEquipmentId(eq.id || null);
+        setSampleId(eq.id || null);
         setSampleDataLoaded(true);
       });
     } else {
@@ -387,7 +394,9 @@ function TestWeightsCalibration() {
 
   // Auto-save function - saves progress without marking as completed
   const handleAutoSave = async () => {
+    console.log('handleAutoSave called with sampleId:', sampleId);
     if (!sampleId) {
+      console.log('No sampleId, auto-save cancelled');
       return false;
     }
     
@@ -519,7 +528,22 @@ function TestWeightsCalibration() {
       mpe && mpe.toString().trim() !== '';
     
     setHasUnsavedChanges(hasChanges);
-  }, [preparation, abbaRows, mpe]);
+    
+    // Save current form data to sessionStorage for page refresh restoration
+    if (hasChanges) {
+      try {
+        const currentFormData = {
+          preparation,
+          abbaRows,
+          mpe,
+          currentStep
+        };
+        sessionStorage.setItem('current_form_data', JSON.stringify(currentFormData));
+      } catch (error) {
+        console.error('Failed to save form data to sessionStorage:', error);
+      }
+    }
+  }, [preparation, abbaRows, mpe, currentStep]);
 
   // Track if equipment data has been loaded
   const [sampleDataLoaded, setSampleDataLoaded] = useState(false);
@@ -556,9 +580,51 @@ function TestWeightsCalibration() {
 
   usePageRefreshDetection(restoreData, saveKey, sampleDataLoaded);
 
+  // Auto-populate from existing calibration record if available
+  useEffect(() => {
+    if (sampleId) {
+      apiService.getCalibrationRecordBySampleId(sampleId).then(res => {
+        console.log('Test Weights Calibration record response:', res.data);
+        if (res.data && res.data.has_calibration === false) {
+          // No calibration record exists for this sample - this is normal for new calibrations
+          console.log('No calibration record found for this sample');
+        } else if (res.data && res.data.input_data && res.data.calibration_type === 'Test Weights') {
+          const input = typeof res.data.input_data === 'string' ? JSON.parse(res.data.input_data) : res.data.input_data;
+          console.log('Loaded test weights data:', input);
+          setPreparation(input.preparation || {
+            testWeight: '',
+            testWeightClass: '',
+            testWeightNominal: '',
+            referenceWeight: '',
+            referenceWeightClass: '',
+            referenceWeightNominal: '',
+            referenceWeightDensity: '',
+            testWeightDensity: '',
+            temp: '',
+            humidity: '',
+            pressure: '',
+            airDensity: '',
+          });
+          setAbbaRows(input.abbaRows || [
+            { S1: '', T1: '', T2: '', S2: '', Dmci: '' },
+            { S1: '', T1: '', T2: '', S2: '', Dmci: '' },
+            { S1: '', T1: '', T2: '', S2: '', Dmci: '' },
+          ]);
+          setMpe(input.mpe || '');
+          setCurrentStep(input.currentStep || 1);
+        }
+      }).catch((err) => {
+        // Log unexpected errors
+        console.log('Error loading calibration record:', err);
+      });
+    }
+  }, [sampleId]);
+
   // Trigger auto-save when equipment data is loaded and there are changes
   useEffect(() => {
+    console.log('Auto-save trigger check:', { sampleDataLoaded, hasUnsavedChanges, sampleId });
     if (sampleDataLoaded && hasUnsavedChanges) {
+      console.log('Triggering auto-save...');
       // Small delay to ensure state is updated
       const timer = setTimeout(() => {
         handleAutoSave().catch(console.error);
@@ -615,23 +681,16 @@ function TestWeightsCalibration() {
 
   // State for calibration confirmation modal
   const [showCalibrationConfirm, setShowCalibrationConfirm] = useState(false);
-  const [calibrationConfirmTitle, setCalibrationConfirmTitle] = useState("");
-  const [calibrationConfirmMessage, setCalibrationConfirmMessage] = useState("");
-  const [calibrationConfirmType, setCalibrationConfirmType] = useState("info");
+  const [isCalibrationLoading, setIsCalibrationLoading] = useState(false);
 
   // Show confirmation dialog before calibration
   const showCalibrationConfirmation = () => {
-    setCalibrationConfirmTitle("Confirm Calibration");
-    setCalibrationConfirmMessage(
-      `Are you sure you want to confirm this calibration?`
-    );
-    setCalibrationConfirmType(passesMPE ? "success" : "warning");
     setShowCalibrationConfirm(true);
   };
 
   // Handle confirmation for calibration
   const handleConfirmCalibrationAction = async () => {
-    setShowCalibrationConfirm(false);
+    setIsCalibrationLoading(true);
     
     try {
       // Save the calibration record first
@@ -652,6 +711,9 @@ function TestWeightsCalibration() {
     } catch (error) {
       console.error('Error in calibration confirmation:', error);
       toast.error('Failed to complete calibration: ' + (error.message || 'Unknown error'));
+    } finally {
+      setIsCalibrationLoading(false);
+      setShowCalibrationConfirm(false);
     }
   };
 
@@ -902,60 +964,6 @@ function TestWeightsCalibration() {
                 </tbody>
               </table>
             </div>
-            <div className="flex justify-end mt-4">
-              {modernButton({
-                onClick: () => {
-                  // Validation before showing confirmation
-                  if (!preparation.testWeightNominal || !preparation.testWeightClass || 
-                      !preparation.referenceWeight || !preparation.referenceWeightClass || 
-                      !preparation.referenceWeightNominal || !preparation.temp || 
-                      !preparation.humidity) {
-                    toast.error('Please complete all calibration steps before confirming.', {
-                      position: 'top-center',
-                      duration: 4000,
-                      style: {
-                        textAlign: 'center',
-                        fontSize: '14px',
-                        fontWeight: '500'
-                      }
-                    });
-                    return;
-                  }
-                  
-                  if (abbaRows.some(row => !row.S1 || !row.T1 || !row.T2 || !row.S2 || 
-                      isNaN(Number(row.S1)) || isNaN(Number(row.T1)) || 
-                      isNaN(Number(row.T2)) || isNaN(Number(row.S2)))) {
-                    toast.error('Please complete all ABBA Weighing values before confirming.', {
-                      position: 'top-center',
-                      duration: 4000,
-                      style: {
-                        textAlign: 'center',
-                        fontSize: '14px',
-                        fontWeight: '500'
-                      }
-                    });
-                    return;
-                  }
-                  
-                  if (!mpe || mpe.toString().trim() === '') {
-                    toast.error('Please enter the MPE value before confirming.', {
-                      position: 'top-center',
-                      duration: 4000,
-                      style: {
-                        textAlign: 'center',
-                        fontSize: '14px',
-                        fontWeight: '500'
-                      }
-                    });
-                    return;
-                  }
-                  
-                  showCalibrationConfirmation();
-                },
-                children: 'Confirm Calibration',
-                className: 'bg-green-600 hover:bg-green-700',
-              })}
-            </div>
           </CardSection>
         );
       default:
@@ -970,14 +978,14 @@ function TestWeightsCalibration() {
       <Toaster position="top-right" />
       <div className="w-full mx-auto">
         <div className="bg-white p-8 rounded-lg shadow-md w-full mb-8 border border-blue-100 relative">
-          {/* Back Button */}
+          {/* Close (X) Button */}
           <button
-            onClick={handleBackClick}
-            className="absolute top-4 right-4 flex items-center gap-2 px-4 py-2 bg-[#2a9dab] text-white hover:bg-[#238a91] rounded-lg shadow-md transition-all duration-200 hover:shadow-lg"
-            title="Go back to calibration list"
+            onClick={() => setShowSimpleCloseConfirm(true)}
+            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-lg h-8 w-8 flex items-center justify-center rounded hover:bg-gray-200 transition-colors"
+            title="Close"
+            aria-label="Close"
           >
-            <MdArrowBack className="w-5 h-5" />
-            <span className="text-sm font-medium">Back</span>
+            ✕
           </button>
           
           <div className="flex items-center mb-2 pr-20">
@@ -1035,8 +1043,7 @@ function TestWeightsCalibration() {
                       }
                     }
                     
-                    await handleAutoSave();
-                    setCurrentStep(currentStep + 1);
+                    setShowNextConfirm(true);
                   },
                   children: 'Next',
                 })}
@@ -1098,18 +1105,79 @@ function TestWeightsCalibration() {
         isLoading={isSaving}
       />
 
-      {/* Calibration Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={showCalibrationConfirm}
-        onClose={() => setShowCalibrationConfirm(false)}
-        onConfirm={handleConfirmCalibrationAction}
-        title={calibrationConfirmTitle}
-        message={calibrationConfirmMessage}
-        type={calibrationConfirmType}
-        confirmText="Confirm"
-        cancelText="Cancel"
-        isLoading={isSaving}
-      />
+      {/* Calibration Confirmation Modal (simple) */}
+      {showCalibrationConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Confirm Calibration</h2>
+            <p className="text-gray-600 mb-6">Are you sure you want to confirm this calibration?</p>
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setShowCalibrationConfirm(false)} 
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+                disabled={isCalibrationLoading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmCalibrationAction}
+                disabled={isCalibrationLoading}
+                className={`px-4 py-2 text-white rounded-lg font-medium ${isCalibrationLoading ? 'bg-red-400' : 'bg-red-600 hover:bg-red-700'}`}
+              >
+                {isCalibrationLoading ? 'Processing...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Simple Close Confirmation Modal (for X button) */}
+      {showSimpleCloseConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Confirm Cancellation</h2>
+            <p className="text-gray-600 mb-6">Are you sure you want to cancel the calibration?</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setShowSimpleCloseConfirm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">Cancel</button>
+              <button onClick={() => { setShowSimpleCloseConfirm(false); handleConfirmBack(); }} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Next Step Confirmation Modal (simple) */}
+      {showNextConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">{nextConfirmTitle}</h2>
+            <p className="text-gray-600 mb-6">{nextConfirmMessage}</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setShowNextConfirm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">Cancel</button>
+              <button
+                onClick={async () => {
+                  try {
+                    setIsNextSaving(true);
+                    const ok = await handleAutoSave();
+                    if (ok) {
+                      toast.success('Progress saved.');
+                      setShowNextConfirm(false);
+                      setCurrentStep((s) => Math.min(3, s + 1));
+                    } else {
+                      toast.error('Failed to save progress.');
+                    }
+                  } finally {
+                    setIsNextSaving(false);
+                  }
+                }}
+                disabled={isNextSaving}
+                className={`px-4 py-2 text-white rounded-lg font-medium ${isNextSaving ? 'bg-red-400' : 'bg-red-600 hover:bg-red-700'}`}
+              >
+                {isNextSaving ? 'Saving…' : 'Save & Continue'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

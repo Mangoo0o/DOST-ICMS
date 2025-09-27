@@ -1884,6 +1884,39 @@ const Reservations = () => {
     }
   };
 
+  // Helper function to find the best matching address option
+  const findBestAddressMatch = (parsedValue, availableOptions) => {
+    if (!parsedValue || !availableOptions.length) return '';
+    
+    const normalized = parsedValue.toLowerCase().trim();
+    
+    // First try exact match
+    const exactMatch = availableOptions.find(option => 
+      option.toLowerCase() === normalized
+    );
+    if (exactMatch) return exactMatch;
+    
+    // Try partial match (contains)
+    const partialMatch = availableOptions.find(option => 
+      option.toLowerCase().includes(normalized) || 
+      normalized.includes(option.toLowerCase())
+    );
+    if (partialMatch) return partialMatch;
+    
+    // Try fuzzy matching for common variations
+    const fuzzyMatch = availableOptions.find(option => {
+      const optionNorm = option.toLowerCase();
+      // Remove common words and compare
+      const parsedClean = normalized.replace(/\b(province|city|municipality|barangay|brgy)\b/g, '').trim();
+      const optionClean = optionNorm.replace(/\b(province|city|municipality|barangay|brgy)\b/g, '').trim();
+      return parsedClean === optionClean || 
+             parsedClean.includes(optionClean) || 
+             optionClean.includes(parsedClean);
+    });
+    
+    return fuzzyMatch || '';
+  };
+
   const handleConfirmAttach = () => {
     console.log('handleConfirmAttach called');
     console.log('parsedClientFromPdf:', parsedClientFromPdf);
@@ -1891,15 +1924,48 @@ const Reservations = () => {
     
     setIsFilePreviewOpen(false);
     
+    // Get available address options
+    const availableProvinces = getProvinces();
+    
+    // Find best matching province
+    const matchedProvince = findBestAddressMatch(
+      parsedAddressFromPdf?.province || '', 
+      availableProvinces
+    );
+    
+    // Get cities for the matched province
+    const availableCities = matchedProvince ? getCities(matchedProvince) : [];
+    const matchedCity = findBestAddressMatch(
+      parsedAddressFromPdf?.city || '', 
+      availableCities
+    );
+    
+    // Get barangays for the matched province and city
+    const availableBarangays = matchedProvince && matchedCity ? 
+      getBarangays(matchedProvince, matchedCity) : [];
+    const matchedBarangay = findBestAddressMatch(
+      parsedAddressFromPdf?.barangay || '', 
+      availableBarangays
+    );
+    
+    console.log('Address matching results:', {
+      original: parsedAddressFromPdf,
+      matched: {
+        province: matchedProvince,
+        city: matchedCity,
+        barangay: matchedBarangay
+      }
+    });
+    
     // Prepare editable client info from parsed data
     const clientInfo = {
       name: parsedClientFromPdf?.name || '',
       contact_number: parsedClientFromPdf?.contact_number || '',
       email: parsedClientFromPdf?.email || '',
       company: parsedClientFromPdf?.company || '',
-      province: parsedAddressFromPdf?.province || '',
-      city: parsedAddressFromPdf?.city || '',
-      barangay: parsedAddressFromPdf?.barangay || ''
+      province: matchedProvince,
+      city: matchedCity,
+      barangay: matchedBarangay
     };
     
     console.log('Prepared clientInfo:', clientInfo);
@@ -1912,10 +1978,19 @@ const Reservations = () => {
   const handleClientInfoChange = (field, value) => {
     console.log('handleClientInfoChange called - field:', field, 'value:', value);
     setEditableClientInfo(prev => {
-      const newInfo = {
+      let newInfo = {
         ...prev,
         [field]: value
       };
+      
+      // Handle address field cascading (reset dependent fields when parent changes)
+      if (field === 'province') {
+        newInfo.city = '';
+        newInfo.barangay = '';
+      } else if (field === 'city') {
+        newInfo.barangay = '';
+      }
+      
       console.log('Updated editableClientInfo:', newInfo);
       return newInfo;
     });
