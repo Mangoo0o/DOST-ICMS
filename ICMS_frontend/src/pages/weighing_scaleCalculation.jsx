@@ -289,6 +289,37 @@ function WeighingScaleCalculation() {
     }
   }, [passedSampleId, passedSerialNumber]);
 
+  // Fetch request details to populate certificate information
+  useEffect(() => {
+    if (sampleId) {
+      // First get the sample details to get the reference number
+      apiService.getSampleById(sampleId).then(sampleRes => {
+        const sample = sampleRes.data;
+        if (sample.reference_number) {
+          // Fetch request details using the reference number
+          apiService.getRequestDetails(sample.reference_number).then(requestRes => {
+            const requestData = requestRes.data;
+            if (requestData) {
+              // Populate certificate information from request data
+              setEquipment(prev => ({
+                ...prev,
+                customerName: requestData.client_name || requestData.customer_name || '',
+                customerAddress: requestData.client_address || requestData.customer_address || '',
+                referenceNo: requestData.reference_number || '',
+                sampleNo: sample.serial_no || '',
+                dateSubmitted: requestData.date_submitted || requestData.date_created || new Date().toISOString().split('T')[0],
+              }));
+            }
+          }).catch(err => {
+            console.log('Error fetching request details:', err);
+          });
+        }
+      }).catch(err => {
+        console.log('Error fetching sample details:', err);
+      });
+    }
+  }, [sampleId]);
+
   // Auto-populate from existing calibration record if available
   useEffect(() => {
     if (sampleId) {
@@ -620,55 +651,40 @@ const u_rep_all = stddevRepeat;
               <MdOutlineDeviceHub className="h-5 w-5 text-[#2a9dab] mr-2" />
               <span className="text-[#2a9dab] font-semibold text-sm">Step 1: Equipment & Environmental Conditions</span>
             </div>
-            {/* Certificate Information */}
+            
+            {/* Certificate Information Display */}
             <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
               <h3 className="text-sm font-semibold text-blue-800 mb-3">Certificate Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Customer Name:</label>
-                  {modernInput({
-                    name: 'customerName',
-                    value: equipment.customerName,
-                    onChange: handleEquipmentChange,
-                    placeholder: 'e.g. MW RICE & SHINE',
-                  })}
+                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
+                    {equipment.customerName || 'Loading...'}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Customer Address:</label>
-                  {modernInput({
-                    name: 'customerAddress',
-                    value: equipment.customerAddress,
-                    onChange: handleEquipmentChange,
-                    placeholder: 'e.g. Catbangen, San Fernando City, La Union',
-                  })}
+                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
+                    {equipment.customerAddress || 'Loading...'}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Reference No.:</label>
-                  {modernInput({
-                    name: 'referenceNo',
-                    value: equipment.referenceNo,
-                    onChange: handleEquipmentChange,
-                    placeholder: 'e.g. RI-072025-MET-0669',
-                  })}
+                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
+                    {equipment.referenceNo || 'Loading...'}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Sample No.:</label>
-                  {modernInput({
-                    name: 'sampleNo',
-                    value: equipment.sampleNo,
-                    onChange: handleEquipmentChange,
-                    placeholder: 'e.g. RI-072025',
-                  })}
+                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
+                    {equipment.sampleNo || 'Loading...'}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Date Submitted:</label>
-                  {modernInput({
-                    name: 'dateSubmitted',
-                    value: equipment.dateSubmitted,
-                    onChange: handleEquipmentChange,
-                    type: 'date',
-                    placeholder: 'Date submitted',
-                  })}
+                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
+                    {equipment.dateSubmitted || 'Loading...'}
+                  </div>
                 </div>
               </div>
             </div>
