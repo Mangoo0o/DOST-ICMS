@@ -304,13 +304,6 @@ function ThermometerUncertaintyCalculator() {
   const veffVal = veff();
   const k = DEFAULT_K; // 1.97 for 95% confidence from spreadsheet
   const ue = k * uc;
-  
-  // Debug logging
-  console.log('Uncertainty calculation:', {
-    us, rg, rd,
-    u1, u2, u3,
-    uc, k, ue
-  });
 
   // Stepper UI
   const renderStepper = () => (
