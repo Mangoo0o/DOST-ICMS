@@ -135,12 +135,12 @@ const useInputNavigation = () => {
   return { handleKeyDown, getNextInput, getPreviousInput };
 };
 
-const DEFAULT_US = 0.023; // Standard uncertainty (°C)
+const DEFAULT_US = 0.024; // Standard uncertainty (°C) - from spreadsheet
 const DEFAULT_SC1 = 1;
 const DEFAULT_DF1 = 1e26; // Effectively infinite
-const DEFAULT_RG = 0; // Resolution (°C) - from spreadsheet
+const DEFAULT_RG = 0; // Resolution (°C) - default value, user input
 const DEFAULT_RD = 1; // Readability multiplier
-const DEFAULT_K = 2; // Coverage factor for 95% confidence
+const DEFAULT_K = 1.97; // Coverage factor for 95% confidence - from spreadsheet
 
 function stddev(arr) {
   const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
@@ -277,7 +277,7 @@ function ThermometerUncertaintyCalculator() {
   const df3 = 200; // From spreadsheet
 
   // Reference standard uncertainty (U1) - from spreadsheet: Un = ΣUn_i / k
-  const u1 = us / DEFAULT_K; // Un = Us / k where k=2 for 95% confidence
+  const u1 = us / DEFAULT_K; // Un = Us / k where k=1.97 for 95% confidence
   const u2 = ur;
   const u3 = ud;
   const uc = Math.sqrt(
@@ -302,8 +302,15 @@ function ThermometerUncertaintyCalculator() {
     return denominator === 0 ? Infinity : numerator / denominator;
   }
   const veffVal = veff();
-  const k = DEFAULT_K; // For 95% confidence
+  const k = DEFAULT_K; // 1.97 for 95% confidence from spreadsheet
   const ue = k * uc;
+  
+  // Debug logging
+  console.log('Uncertainty calculation:', {
+    us, rg, rd,
+    u1, u2, u3,
+    uc, k, ue
+  });
 
   // Stepper UI
   const renderStepper = () => (
@@ -793,39 +800,28 @@ function ThermometerUncertaintyCalculator() {
             </div>
             
             <div className="mb-4">
-              <h2 className="text-lg font-semibold mb-2">Uncertainty Components Summary</h2>
+              <h2 className="text-lg font-semibold mb-2">Measurement Results</h2>
               <table className="min-w-full border text-sm mb-4">
                 <thead>
                   <tr className="bg-gray-100">
-                    <th className="border px-2 py-1">Source</th>
-                    <th className="border px-2 py-1">Value (ui, °C)</th>
-                    <th className="border px-2 py-1">Distribution</th>
-                    <th className="border px-2 py-1">dfi</th>
-                    <th className="border px-2 py-1">sci</th>
+                    <th className="border px-2 py-1">Standard Reading °C</th>
+                    <th className="border px-2 py-1">UUT Reading °C</th>
+                    <th className="border px-2 py-1">Correction °C</th>
+                    <th className="border px-2 py-1">Uncertainty of Measurement</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td className="border px-2 py-1">Reference Standard (U1)</td>
-                    <td className="border px-2 py-1">{u1.toFixed(4)}</td>
-                    <td className="border px-2 py-1">Normal</td>
-                    <td className="border px-2 py-1">∞</td>
-                    <td className="border px-2 py-1">1</td>
-                  </tr>
-                  <tr>
-                    <td className="border px-2 py-1">Repeatability (U2)</td>
-                    <td className="border px-2 py-1">{u2.toFixed(4)}</td>
-                    <td className="border px-2 py-1">Normal</td>
-                    <td className="border px-2 py-1">{df2}</td>
-                    <td className="border px-2 py-1">1</td>
-                  </tr>
-                  <tr>
-                    <td className="border px-2 py-1">Readability (U3)</td>
-                    <td className="border px-2 py-1">{u3.toFixed(8)}</td>
-                    <td className="border px-2 py-1">Rectangular</td>
-                    <td className="border px-2 py-1">{df3}</td>
-                    <td className="border px-2 py-1">1</td>
-                  </tr>
+                  {referenceData.map((row, index) => {
+                    // Use the overall calculated uncertainty for all points
+                    return (
+                      <tr key={index}>
+                        <td className="border px-2 py-1 text-center">{row.temp.toFixed(3)}</td>
+                        <td className="border px-2 py-1 text-center">{row.indicated.toFixed(1)}</td>
+                        <td className="border px-2 py-1 text-center">{row.correction.toFixed(3)}</td>
+                        <td className="border px-2 py-1 text-center">{ue.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
