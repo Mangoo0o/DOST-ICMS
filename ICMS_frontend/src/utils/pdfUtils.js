@@ -73,10 +73,53 @@ export function parsePdfFields(text) {
   text = text.replace(/[\u2012\u2013\u2014\u2212]/g, '-');
   const normalize = (s) => (s || '').replace(/\s+/g, ' ').trim();
   
-  // Split by common delimiters and clean up
-  const parts = text.split(/[\n\r]+|●|•/).map(p => normalize(p)).filter(Boolean);
-  console.log('Split parts count:', parts.length);
-  console.log('Parts preview:', parts.slice(0, 10));
+  // Split by common delimiters and clean up - be more aggressive with splitting
+  let parts = text.split(/[\n\r]+|●|•/).map(p => normalize(p)).filter(Boolean);
+  
+  // If we only get 1 part, try more aggressive splitting
+  if (parts.length === 1) {
+    console.log('Only 1 part found, trying more aggressive splitting...');
+    // Try splitting on multiple spaces, periods, and other delimiters
+    parts = text.split(/\s{3,}|\s{2,}|\.\s+/).map(p => normalize(p)).filter(Boolean);
+    console.log('After aggressive splitting, parts count:', parts.length);
+  }
+  
+  // If still only 1 part, try splitting on common table delimiters
+  if (parts.length === 1) {
+    console.log('Still only 1 part, trying table-specific splitting...');
+    // Look for patterns that might indicate table rows
+    const tableRowPattern = /(Weighing Scale|Test - Weights|Sphygmomanometer|Thermometer|Thermohygrometer|Test Weights|Proving Tanks|Test Measure|Fuel Dispensing Pump|Road Tankers)/gi;
+    const matches = [...text.matchAll(tableRowPattern)];
+    
+    if (matches.length > 0) {
+      console.log('Found table row patterns:', matches.length);
+      // Split the text around these patterns
+      const splitPoints = matches.map(match => match.index);
+      parts = [];
+      let lastIndex = 0;
+      
+      for (let i = 0; i < splitPoints.length; i++) {
+        const start = splitPoints[i];
+        const end = i < splitPoints.length - 1 ? splitPoints[i + 1] : text.length;
+        const part = text.substring(start, end).trim();
+        if (part) {
+          parts.push(normalize(part));
+        }
+        lastIndex = end;
+      }
+      
+      // Also add any remaining text
+      if (lastIndex < text.length) {
+        const remaining = text.substring(lastIndex).trim();
+        if (remaining) {
+          parts.push(normalize(remaining));
+        }
+      }
+    }
+  }
+  
+  console.log('Final split parts count:', parts.length);
+  console.log('Parts preview:', parts.slice(0, 20));
 
   const kv = {};
   for (const p of parts) {
@@ -377,46 +420,143 @@ export function parsePdfFields(text) {
   };
   const schedule = { date_scheduled: dateScheduled, date_expected_completion: dateExpected };
 
-  // Simplified sample details parsing for the actual 5-column table structure
+  // Function to parse the specific PDF format we're seeing
+  function parseSpecificPdfFormat(text) {
+    const samples = [];
+    console.log('Trying specific PDF format parser...');
+    
+    // Look for the specific table pattern in the text
+    // Pattern: Equipment Type   Sample Code   Calibration Method   Method Code   Quantity   Unit Cost   Total
+    // More flexible pattern to handle the actual format
+    const tablePattern = /(Weighing Scale|Test - Weights|Sphygmomanometer|Thermometer|Thermohygrometer|Test Weights|Proving Tanks|Test Measure|Fuel Dispensing Pump|Road Tankers)\s+([A-Z0-9\-\s]+?)\s+([A-Za-z\s\(\)]+?)\s+([A-Z0-9\-\s]+?)\s+(\d+)\s+(\d+\.\d{2})\s+(\d+\.\d{2})/gi;
+    
+    let match;
+    while ((match = tablePattern.exec(text)) !== null) {
+      const [, equipmentType, sampleCode, calibrationMethod, methodCode, quantity, unitCost, total] = match;
+      
+      console.log('Found specific format match:', {
+        equipmentType,
+        sampleCode,
+        calibrationMethod: calibrationMethod.trim(),
+        methodCode,
+        quantity,
+        unitCost,
+        total
+      });
+      
+      const sample = {
+        section: 'Calibration of Non-Automatic Weighing Instrument', // Default section
+        type: equipmentType.trim(),
+        range: calibrationMethod.trim(),
+        serialNo: sampleCode.trim(),
+        price: unitCost,
+        quantity: parseInt(quantity, 10),
+      };
+      
+      samples.push(sample);
+    }
+    
+    // If the above pattern didn't work, try a more flexible approach
+    if (samples.length === 0) {
+      console.log('Specific pattern didn\'t work, trying flexible approach...');
+      
+      // Look for equipment types followed by sample codes and prices
+      const equipmentTypes = ['Weighing Scale', 'Test - Weights', 'Sphygmomanometer', 'Thermometer', 'Thermohygrometer'];
+      
+      for (const equipmentType of equipmentTypes) {
+        const regex = new RegExp(`${equipmentType}\\s+([A-Z0-9\\-\\s]+?)\\s+([A-Za-z\\s\\(\\)]+?)\\s+([A-Z0-9\\-\\s]+?)\\s+(\\d+)\\s+(\\d+\\.\\d{2})\\s+(\\d+\\.\\d{2})`, 'gi');
+        const match = regex.exec(text);
+        
+        if (match) {
+          const [, sampleCode, calibrationMethod, methodCode, quantity, unitCost, total] = match;
+          
+          console.log('Found flexible format match:', {
+            equipmentType,
+            sampleCode,
+            calibrationMethod: calibrationMethod.trim(),
+            methodCode,
+            quantity,
+            unitCost,
+            total
+          });
+          
+          const sample = {
+            section: 'Calibration of Non-Automatic Weighing Instrument',
+            type: equipmentType,
+            range: calibrationMethod.trim(),
+            serialNo: sampleCode.trim(),
+            price: unitCost,
+            quantity: parseInt(quantity, 10),
+          };
+          
+          samples.push(sample);
+        }
+      }
+    }
+    
+    console.log('Specific format parser found', samples.length, 'samples');
+    return samples;
+  }
+
+  // Enhanced sample details parsing for the actual 5-column table structure
   const samples = [];
   console.log('Starting sample parsing...');
   
-  // Look for "Sample Details" section
-  const sampleDetailsIndex = parts.findIndex(p => 
-    p.toLowerCase().includes('sample details')
-  );
+  // First, try to parse the specific format we see in the PDF
+  const specificFormatSamples = parseSpecificPdfFormat(text);
+  if (specificFormatSamples.length > 0) {
+    console.log('Found samples using specific format parser:', specificFormatSamples.length);
+    samples.push(...specificFormatSamples);
+  }
+  
+  // If no samples found with specific parser, try the general approach
+  if (samples.length === 0) {
+    // Look for "Sample Details" section - be more flexible with variations
+    const sampleDetailsIndex = parts.findIndex(p => {
+      const lower = p.toLowerCase();
+      return lower.includes('sample details') || 
+             lower.includes('sample information') ||
+             lower.includes('equipment details') ||
+             lower.includes('calibration details');
+    });
   
   if (sampleDetailsIndex !== -1) {
-    console.log('Found "Sample Details" section at index:', sampleDetailsIndex);
+    console.log('Found sample section at index:', sampleDetailsIndex);
     
-    // Look for table headers after "Sample Details"
+    // Look for table headers after the sample section - be more flexible
     let headerIndex = -1;
-    for (let i = sampleDetailsIndex + 1; i < parts.length; i++) {
+    let headerKeywords = ['section', 'type', 'range', 'serial', 'price'];
+    
+    for (let i = sampleDetailsIndex + 1; i < Math.min(sampleDetailsIndex + 10, parts.length); i++) {
       const part = parts[i].toLowerCase();
-      // Look for the exact headers from your table
-      if (part.includes('section') && part.includes('type') && part.includes('range') && 
-          (part.includes('serial no') || part.includes('serial')) && part.includes('price')) {
+      // Count how many header keywords are found in this line
+      const keywordCount = headerKeywords.filter(keyword => part.includes(keyword)).length;
+      
+      // If we find at least 3 of the expected keywords, consider it a header
+      if (keywordCount >= 3) {
         headerIndex = i;
-        console.log('Found table headers at index:', headerIndex);
+        console.log('Found table headers at index:', headerIndex, 'with', keywordCount, 'keywords');
         break;
       }
     }
     
     if (headerIndex !== -1) {
-      // Look for data rows after headers
+      // Look for data rows after headers - be more comprehensive
       let dataIndex = headerIndex + 1;
       const sampleData = [];
       
-      // Collect the next few lines as potential data
-      while (dataIndex < parts.length && sampleData.length < 25) {
+      // Collect more lines and be less restrictive about stopping conditions
+      while (dataIndex < parts.length && sampleData.length < 50) {
         const line = parts[dataIndex];
-        if (line && line.trim() && line.length > 3) {
-          // Skip if it's another section header
-          if (line.toLowerCase().includes('section') || 
-              line.toLowerCase().includes('details') ||
-              line.toLowerCase().includes('information')) {
-            dataIndex++;
-            continue;
+        if (line && line.trim() && line.length > 2) {
+          // Skip obvious section headers but be less restrictive
+          const lowerLine = line.toLowerCase();
+          if (lowerLine.includes('section') && lowerLine.includes('information') ||
+              lowerLine.includes('total') && lowerLine.includes('amount') ||
+              lowerLine.includes('signature') || lowerLine.includes('date') ||
+              lowerLine.includes('remarks') || lowerLine.includes('notes')) {
+            // Stop if we hit a new major section
+            break;
           }
           
           sampleData.push(line.trim());
@@ -424,13 +564,14 @@ export function parsePdfFields(text) {
         dataIndex++;
       }
       
-      console.log('Sample data lines found:', sampleData);
+      console.log('Sample data lines found:', sampleData.length);
+      console.log('Sample data lines:', sampleData.slice(0, 10)); // Show first 10 for debugging
       
-      // Try multiple parsing strategies for different table formats
+      // Enhanced parsing strategies for different table formats
       for (const row of sampleData) {
         console.log('Processing row:', row);
         
-        // Strategy 1: Split on 2+ spaces (original approach)
+        // Strategy 1: Split on 2+ spaces (most common for PDF tables)
         let cols = row.split(/\s{2,}/).map(c => c.trim()).filter(Boolean);
         
         // Strategy 2: If that doesn't work, try splitting on tabs
@@ -438,19 +579,22 @@ export function parsePdfFields(text) {
           cols = row.split(/\t/).map(c => c.trim()).filter(Boolean);
         }
         
-        // Strategy 3: If still not enough columns, try splitting on single spaces but be more careful
+        // Strategy 3: Try splitting on single spaces but be smarter about grouping
         if (cols.length < 3) {
-          // Look for patterns that might indicate column boundaries
           const words = row.split(/\s+/);
           if (words.length >= 3) {
-            // Try to group words that look like they belong together
+            // Enhanced grouping logic
             const grouped = [];
             let currentGroup = [];
             
             for (let i = 0; i < words.length; i++) {
               const word = words[i];
-              // If this looks like a serial number or price, it's probably its own column
-              if (/^[A-Z0-9\-]{3,}$/i.test(word) || /^\d+(\.\d{2})?$/.test(word)) {
+              
+              // If this looks like a serial number, price, or range, it's probably its own column
+              if (/^[A-Z0-9\-]{3,}$/i.test(word) || 
+                  /^\d+(\.\d{2})?$/.test(word) ||
+                  /^\d+\s*-\s*\d+/.test(word) ||
+                  /^\d+\s*(g|kg|l|ml)$/i.test(word)) {
                 if (currentGroup.length > 0) {
                   grouped.push(currentGroup.join(' '));
                   currentGroup = [];
@@ -471,49 +615,77 @@ export function parsePdfFields(text) {
           }
         }
         
+        // Strategy 4: If still not enough columns, try fixed-width parsing
+        if (cols.length < 3 && row.length > 20) {
+          // Try to parse as fixed-width columns (common in PDF tables)
+          const fixedWidthCols = [];
+          const colWidths = [20, 25, 20, 15, 10]; // Estimated column widths
+          let start = 0;
+          
+          for (const width of colWidths) {
+            const col = row.substring(start, start + width).trim();
+            if (col) fixedWidthCols.push(col);
+            start += width;
+          }
+          
+          if (fixedWidthCols.length >= 3) {
+            cols = fixedWidthCols;
+          }
+        }
+        
         console.log('Parsed columns:', cols);
         
         if (cols.length >= 3) {
-          // Try different column orders based on content
+          // Enhanced column identification with more flexible patterns
           let sectionCol = '';
           let typeCol = '';
           let rangeCol = '';
           let serialCol = '';
           let priceCol = '';
           
-          // Look for serial numbers (usually contain letters and numbers)
-          const serialIndex = cols.findIndex(col => /[A-Z0-9\-]{3,}/i.test(col));
+          // Look for serial numbers (more flexible patterns)
+          const serialIndex = cols.findIndex(col => 
+            /[A-Z0-9\-]{3,}/i.test(col) || 
+            /^[A-Z]{2,}\d{2,}/i.test(col) ||
+            /RI-?\d{6,}-?[A-Z]{3}-?\d{3,}/i.test(col)
+          );
           if (serialIndex !== -1) {
             serialCol = cols[serialIndex];
           }
           
-          // Look for prices (usually numbers with optional decimal)
-          const priceIndex = cols.findIndex(col => /^\d+(\.\d{2})?$/.test(col));
+          // Look for prices (more flexible patterns)
+          const priceIndex = cols.findIndex(col => 
+            /^\d+(\.\d{2})?$/.test(col) ||
+            /^\d{1,3}(,\d{3})*(\.\d{2})?$/.test(col) ||
+            /^\d+\.\d{2}$/.test(col)
+          );
           if (priceIndex !== -1) {
             priceCol = cols[priceIndex];
           }
           
-          // Look for ranges (usually contain numbers and units or dashes)
+          // Look for ranges (more flexible patterns)
           const rangeIndex = cols.findIndex(col => 
             /(\d+\s*-\s*\d+\s*(g|kg|l|ml))|\d+\s*(g|kg|l|ml)/i.test(col) || 
             col.includes('-') || 
-            /^\d+\s*to\s*\d+/i.test(col)
+            /^\d+\s*to\s*\d+/i.test(col) ||
+            /^\d+\s*and\s*below/i.test(col) ||
+            /^\d+\s*L\s*to\s*\d+\s*L/i.test(col)
           );
           if (rangeIndex !== -1) {
             rangeCol = cols[rangeIndex];
           }
           
-          // Look for equipment types (usually contain common equipment words)
+          // Look for equipment types (expanded patterns)
           const typeIndex = cols.findIndex(col => 
-            /scale|thermometer|weight|tank|pump|sphygmomanometer/i.test(col)
+            /scale|thermometer|weight|tank|pump|sphygmomanometer|proving|measure|dispensing|tanker/i.test(col)
           );
           if (typeIndex !== -1) {
             typeCol = cols[typeIndex];
           }
           
-          // Look for sections (usually contain calibration or lab terms)
+          // Look for sections (expanded patterns)
           const sectionIndex = cols.findIndex(col => 
-            /calibration|lab|standard|mass|volume|length|pressure/i.test(col)
+            /calibration|lab|standard|mass|volume|length|pressure|weighing|oiml/i.test(col)
           );
           if (sectionIndex !== -1) {
             sectionCol = cols[sectionIndex];
@@ -526,140 +698,237 @@ export function parsePdfFields(text) {
           if (!serialCol && cols.length >= 4) serialCol = cols[3];
           if (!priceCol && cols.length >= 5) priceCol = cols[4];
 
-          // Filter out lines that are obviously not data rows
-          const looksLikeSerial = /[A-Z0-9\-]{3,}/i.test(serialCol);
-          const looksLikeRange = /(\d+\s*-\s*\d+\s*(g|kg|l|ml))|\d+\s*(g|kg|l|ml)/i.test(rangeCol) || rangeCol.includes('-');
-          const looksLikePrice = /^(\d{1,3}(,\d{3})*|\d+)(\.\d{2})?$/.test(priceCol);
-
-          if (looksLikeSerial || looksLikeRange || looksLikePrice || (typeCol && sectionCol)) {
-            const normalizedPrice = looksLikePrice ? priceCol.replace(/,/g, '') : '';
+          // More flexible validation - accept rows that have meaningful content
+          const hasSerial = /[A-Z0-9\-]{3,}/i.test(serialCol);
+          const hasRange = /(\d+\s*-\s*\d+\s*(g|kg|l|ml))|\d+\s*(g|kg|l|ml)/i.test(rangeCol) || 
+                          rangeCol.includes('-') || /^\d+\s*to\s*\d+/i.test(rangeCol);
+          const hasPrice = /^(\d{1,3}(,\d{3})*|\d+)(\.\d{2})?$/.test(priceCol);
+          const hasType = /scale|thermometer|weight|tank|pump|sphygmomanometer|proving|measure|dispensing|tanker/i.test(typeCol);
+          const hasSection = /calibration|lab|standard|mass|volume|length|pressure|weighing|oiml/i.test(sectionCol);
+          
+          // Accept the row if it has at least 2 meaningful fields
+          const meaningfulFields = [hasSerial, hasRange, hasPrice, hasType, hasSection].filter(Boolean).length;
+          
+          if (meaningfulFields >= 2 || (typeCol && sectionCol)) {
+            const normalizedPrice = hasPrice ? priceCol.replace(/,/g, '') : '0';
             const sample = {
               section: sectionCol || '',
               type: typeCol || '',
               range: rangeCol || '',
               serialNo: serialCol || '',
-              price: normalizedPrice || '0',
+              price: normalizedPrice,
               quantity: 1,
             };
             samples.push(sample);
             console.log('Sample created:', sample);
+          } else {
+            console.log('Row rejected - insufficient meaningful fields:', {
+              hasSerial, hasRange, hasPrice, hasType, hasSection, meaningfulFields
+            });
           }
         }
       }
     }
   }
+  }
   
-  // Fallback: try to extract any structured data from the entire text
+  // Enhanced fallback: try to extract any structured data from the entire text
   if (samples.length === 0) {
-    console.log('No samples found in table parsing, trying fallback...');
+    console.log('No samples found in table parsing, trying enhanced fallback...');
     
-    // More comprehensive pattern matching for different PDF formats
-    const sectionPatterns = [
-      /Weighing\s*Lab/i,
-      /Mass\s*Calibration/i,
-      /Volume\s*Calibration/i,
-      /Calibration\s*of\s*Non-Automatic\s*Weighing\s*Instrument/i,
-      /Length\s*Standards/i,
-      /Thermometer\s*and\s*Hygrometer\s*Standards/i,
-      /Pressure\s*Standard/i
-    ];
+    // Look for any lines that might contain sample data, even without clear table structure
+    const potentialSampleLines = parts.filter(part => {
+      const lower = part.toLowerCase();
+      // Look for lines that contain equipment-related terms
+      return (lower.includes('scale') || lower.includes('thermometer') || 
+              lower.includes('weight') || lower.includes('tank') || 
+              lower.includes('pump') || lower.includes('calibration') ||
+              lower.includes('mass') || lower.includes('volume') ||
+              lower.includes('length') || lower.includes('pressure')) &&
+             part.length > 10; // Must be substantial content
+    });
     
-    const typePatterns = [
-      /Digital\s*Scale/i,
-      /Analog\s*Scale/i,
-      /Platform\s*Scale/i,
-      /Weighing\s*Scale/i,
-      /Thermometer/i,
-      /Thermohygrometer/i,
-      /Test\s*Weights/i,
-      /Sphygmomanometer/i,
-      /Proving\s*Tanks/i,
-      /Test\s*Measure/i,
-      /Fuel\s*Dispensing\s*Pump/i,
-      /Road\s*Tankers/i
-    ];
+    console.log('Found potential sample lines:', potentialSampleLines.length);
     
-    const rangePatterns = [
-      /\d+\s*-\s*\d+\s*(g|kg|l|ml)/i,
-      /\d+\s*(g|kg|l|ml)/i,
-      /\d+\s*to\s*\d+\s*(g|kg|l|ml)/i,
-      /\d+\s*and\s*below/i,
-      /\d+\s*to\s*\d+/i
-    ];
-    
-    const serialPatterns = [
-      /[A-Z]{1,4}-?\d{2,4}-?\d{2,4}/i,
-      /[A-Z]{2,4}\d{3,6}/i,
-      /RI-?\d{6,}-?[A-Z]{3}-?\d{3,}/i,
-      /[A-Z0-9\-]{5,}/i
-    ];
-    
-    const pricePatterns = [
-      /(\d{1,3}(,\d{3})*|\d+)(\.\d{2})/,
-      /\d+\.\d{2}/,
-      /\d+/
-    ];
-    
-    // Try to find matches for each pattern
-    let sectionMatch = null;
-    let typeMatch = null;
-    let rangeMatch = null;
-    let serialMatch = null;
-    let priceMatch = null;
-    
-    for (const pattern of sectionPatterns) {
-      const match = text.match(pattern);
-      if (match) {
-        sectionMatch = match;
-        break;
-      }
-    }
-    
-    for (const pattern of typePatterns) {
-      const match = text.match(pattern);
-      if (match) {
-        typeMatch = match;
-        break;
-      }
-    }
-    
-    for (const pattern of rangePatterns) {
-      const match = text.match(pattern);
-      if (match) {
-        rangeMatch = match;
-        break;
-      }
-    }
-    
-    for (const pattern of serialPatterns) {
-      const match = text.match(pattern);
-      if (match) {
-        serialMatch = match;
-        break;
-      }
-    }
-    
-    for (const pattern of pricePatterns) {
-      const match = text.match(pattern);
-      if (match) {
-        priceMatch = match;
-        break;
-      }
-    }
-    
-    // If we found at least a serial number or some other identifying data, create a sample
-    if (serialMatch || sectionMatch || typeMatch || rangeMatch || priceMatch) {
-      const sample = {
-        section: sectionMatch ? sectionMatch[0] : '',
-        type: typeMatch ? typeMatch[0] : '',
-        range: rangeMatch ? rangeMatch[0] : '',
-        serialNo: serialMatch ? serialMatch[0] : '',
-        price: priceMatch ? priceMatch[0] : '0',
-        quantity: 1,
-      };
+    // Try to parse each potential sample line
+    for (const line of potentialSampleLines) {
+      console.log('Processing potential sample line:', line);
       
-      samples.push(sample);
-      console.log('Fallback sample created:', sample);
+      // Try different parsing strategies
+      let cols = line.split(/\s{2,}/).map(c => c.trim()).filter(Boolean);
+      
+      if (cols.length < 3) {
+        cols = line.split(/\s+/).filter(Boolean);
+      }
+      
+      if (cols.length >= 2) {
+        // Try to identify what each column contains
+        let sectionCol = '';
+        let typeCol = '';
+        let rangeCol = '';
+        let serialCol = '';
+        let priceCol = '';
+        
+        for (const col of cols) {
+          // Check for section/calibration type
+          if (/calibration|lab|standard|mass|volume|length|pressure|weighing|oiml/i.test(col)) {
+            sectionCol = col;
+          }
+          // Check for equipment type
+          else if (/scale|thermometer|weight|tank|pump|sphygmomanometer|proving|measure|dispensing|tanker/i.test(col)) {
+            typeCol = col;
+          }
+          // Check for range/capacity
+          else if (/(\d+\s*-\s*\d+\s*(g|kg|l|ml))|\d+\s*(g|kg|l|ml)/i.test(col) || 
+                   col.includes('-') || /^\d+\s*to\s*\d+/i.test(col) ||
+                   /^\d+\s*and\s*below/i.test(col)) {
+            rangeCol = col;
+          }
+          // Check for serial number
+          else if (/[A-Z0-9\-]{3,}/i.test(col) || /^[A-Z]{2,}\d{2,}/i.test(col)) {
+            serialCol = col;
+          }
+          // Check for price
+          else if (/^\d+(\.\d{2})?$/.test(col) || /^\d{1,3}(,\d{3})*(\.\d{2})?$/.test(col)) {
+            priceCol = col;
+          }
+        }
+        
+        // If we couldn't identify specific columns, use positional assignment
+        if (!sectionCol && cols.length >= 1) sectionCol = cols[0];
+        if (!typeCol && cols.length >= 2) typeCol = cols[1];
+        if (!rangeCol && cols.length >= 3) rangeCol = cols[2];
+        if (!serialCol && cols.length >= 4) serialCol = cols[3];
+        if (!priceCol && cols.length >= 5) priceCol = cols[4];
+        
+        // Create sample if we have meaningful content
+        if (sectionCol || typeCol || rangeCol || serialCol) {
+          const sample = {
+            section: sectionCol || '',
+            type: typeCol || '',
+            range: rangeCol || '',
+            serialNo: serialCol || '',
+            price: priceCol ? priceCol.replace(/,/g, '') : '0',
+            quantity: 1,
+          };
+          
+          samples.push(sample);
+          console.log('Fallback sample created:', sample);
+        }
+      }
+    }
+    
+    // If still no samples, try comprehensive pattern matching
+    if (samples.length === 0) {
+      console.log('Trying comprehensive pattern matching...');
+      
+      const sectionPatterns = [
+        /Weighing\s*Lab/i,
+        /Mass\s*Calibration/i,
+        /Volume\s*Calibration/i,
+        /Calibration\s*of\s*Non-Automatic\s*Weighing\s*Instrument/i,
+        /Length\s*Standards/i,
+        /Thermometer\s*and\s*Hygrometer\s*Standards/i,
+        /Pressure\s*Standard/i
+      ];
+      
+      const typePatterns = [
+        /Digital\s*Scale/i,
+        /Analog\s*Scale/i,
+        /Platform\s*Scale/i,
+        /Weighing\s*Scale/i,
+        /Thermometer/i,
+        /Thermohygrometer/i,
+        /Test\s*Weights/i,
+        /Sphygmomanometer/i,
+        /Proving\s*Tanks/i,
+        /Test\s*Measure/i,
+        /Fuel\s*Dispensing\s*Pump/i,
+        /Road\s*Tankers/i
+      ];
+      
+      const rangePatterns = [
+        /\d+\s*-\s*\d+\s*(g|kg|l|ml)/i,
+        /\d+\s*(g|kg|l|ml)/i,
+        /\d+\s*to\s*\d+\s*(g|kg|l|ml)/i,
+        /\d+\s*and\s*below/i,
+        /\d+\s*to\s*\d+/i
+      ];
+      
+      const serialPatterns = [
+        /[A-Z]{1,4}-?\d{2,4}-?\d{2,4}/i,
+        /[A-Z]{2,4}\d{3,6}/i,
+        /RI-?\d{6,}-?[A-Z]{3}-?\d{3,}/i,
+        /[A-Z0-9\-]{5,}/i
+      ];
+      
+      const pricePatterns = [
+        /(\d{1,3}(,\d{3})*|\d+)(\.\d{2})/,
+        /\d+\.\d{2}/,
+        /\d+/
+      ];
+      
+      // Try to find matches for each pattern
+      let sectionMatch = null;
+      let typeMatch = null;
+      let rangeMatch = null;
+      let serialMatch = null;
+      let priceMatch = null;
+      
+      for (const pattern of sectionPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          sectionMatch = match;
+          break;
+        }
+      }
+      
+      for (const pattern of typePatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          typeMatch = match;
+          break;
+        }
+      }
+      
+      for (const pattern of rangePatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          rangeMatch = match;
+          break;
+        }
+      }
+      
+      for (const pattern of serialPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          serialMatch = match;
+          break;
+        }
+      }
+      
+      for (const pattern of pricePatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          priceMatch = match;
+          break;
+        }
+      }
+      
+      // If we found at least a serial number or some other identifying data, create a sample
+      if (serialMatch || sectionMatch || typeMatch || rangeMatch || priceMatch) {
+        const sample = {
+          section: sectionMatch ? sectionMatch[0] : '',
+          type: typeMatch ? typeMatch[0] : '',
+          range: rangeMatch ? rangeMatch[0] : '',
+          serialNo: serialMatch ? serialMatch[0] : '',
+          price: priceMatch ? priceMatch[0] : '0',
+          quantity: 1,
+        };
+        
+        samples.push(sample);
+        console.log('Pattern matching sample created:', sample);
+      }
     }
   }
 

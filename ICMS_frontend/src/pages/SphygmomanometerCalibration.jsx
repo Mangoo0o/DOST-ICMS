@@ -16,7 +16,10 @@ const CardSection = ({ children, className = '' }) => (
 const ModernInput = (props) => (
   <input
     {...props}
-    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition text-sm bg-white shadow-sm ${props.className || ''}`}
+    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] transition-all duration-200 text-sm bg-white shadow-sm hover:border-gray-400 ${props.className || ''}`}
+    style={{
+      transition: 'all 0.2s ease-in-out'
+    }}
   />
 );
 
@@ -28,13 +31,11 @@ const ModernButton = (props) => (
 );
 
 const steps = [
-  { id: 1, title: 'Calibration Details', icon: <MdInfo /> },
-  { id: 2, title: 'Device Info', icon: <MdScience /> },
-  { id: 3, title: 'Systolic (SYS) Readings', icon: <MdScience /> },
-  { id: 4, title: 'Diastolic (DIA) Readings', icon: <MdScience /> },
-  { id: 5, title: 'IPRT & UUT (DKD R-6-1)', icon: <MdScience /> },
-  { id: 6, title: 'Rate of Pressure Loss', icon: <MdScience /> },
-  { id: 7, title: 'Results', icon: <MdCalculate /> },
+  { id: 1, title: 'Equipment & Device Info', icon: <MdInfo /> },
+  { id: 2, title: 'IPRT & UUT (DKD R-6-1)', icon: <MdScience /> },
+  { id: 3, title: 'Rate of Pressure Loss', icon: <MdScience /> },
+  { id: 4, title: 'Rapid Exhaust Valve Test', icon: <MdScience /> },
+  { id: 5, title: 'Results', icon: <MdCalculate /> },
 ];
 
 function SphygmomanometerCalibration() {
@@ -53,29 +54,43 @@ function SphygmomanometerCalibration() {
     address: '',
     dateSubmitted: '',
     dateCalibrated: new Date().toISOString().slice(0,10),
-    type: 'Sphygmomanometer',
+    type: '',
     manufacturer: '',
     model: '',
     serialNo: serialNumber || '',
+    // Identity & Specifications additions
+    range: '',
+    accuracy: '',
+    // Environment Conditions
+    envStartTime: '',
+    envEndTime: '',
+    envTempStart: '',
+    envTempEnd: '',
+    envHumidityStart: '',
+    envHumidityEnd: '',
+    envPressureStart: '',
+    envPressureEnd: '',
   });
 
-  const [deviceInfo, setDeviceInfo] = useState({
-    cuffSize: '',
-    measurementRangeSys: '',
-    measurementRangeDia: '',
-    resolution: '1',
-    kFactor: 2,
-  });
+  // Auto-set environment start time on load
+  useEffect(() => {
+    setCalDetails(d => (
+      d.envStartTime && d.envStartTime !== ''
+        ? d
+        : { ...d, envStartTime: new Date().toTimeString().slice(0,5) }
+    ));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Readings: three test points x three trials for Systolic and Diastolic
-  const emptyMatrix = [["","",""],["","",""],["","",""]];
-  const [refSys, setRefSys] = useState(emptyMatrix);
-  const [uucSys, setUucSys] = useState(emptyMatrix);
-  const [refDia, setRefDia] = useState(emptyMatrix);
-  const [uucDia, setUucDia] = useState(emptyMatrix);
+  // Device settings removed from calculations/UI
+
+  // Removed legacy SYS/DIA matrices to mirror Excel layout (use DKD IPRT/UUT only)
 
   // DKD R-6-1 pressure gauge layout (mmHg)
-  const KPA_TO_MMHG = 7.500627; // from sheet header
+  const KPA_TO_MMHG = 7.5006269999999997;
+  const BAR_TO_MMHG = 750.06156099999998;
+  const mmHgToKPa = (mmHg) => (mmHg === '' || isNaN(Number(mmHg))) ? '' : Number((Number(mmHg) / KPA_TO_MMHG).toFixed(6));
+  const formatDec = (v, d = 6) => (v === '' || v === null || typeof v === 'undefined' || isNaN(Number(v))) ? '' : Number(v).toFixed(d);
   const [appliedPressures, setAppliedPressures] = useState([0,50,100,150,200,250,300]);
   // IPRT (Standard) readings X1..X4 (up/down alternation)
   const empty7x4 = appliedPressures.map(() => ({ X1:"", X2:"", X3:"", X4:"" }));
@@ -93,6 +108,26 @@ function SphygmomanometerCalibration() {
   const uutMean  = uutRows.map(mean4);
   const deviationMmHg = uutMean.map((u,i)=> (u==='' || iprtMean[i]==='')? '': Number((u - iprtMean[i]).toFixed(6)) );
   const deviationKPa  = deviationMmHg.map(v => v===''? '': Number((v / KPA_TO_MMHG).toFixed(6)));
+  // Increasing/Decreasing means for UUT
+  const uutIncMean = uutRows.map(r => {
+    const vals = [r.X1, r.X3].map(Number).filter(v => !isNaN(v));
+    if (!vals.length) return '';
+    return Number((vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(6));
+  });
+  const uutDecMean = uutRows.map(r => {
+    const vals = [r.X2, r.X4].map(Number).filter(v => !isNaN(v));
+    if (!vals.length) return '';
+    return Number((vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(6));
+  });
+  // Maximum Deviation per pressure point (Excel-style): max(|inc - IPRT|, |dec - IPRT|)
+  const maxDeviation = iprtMean.map((m,i) => {
+    const inc = uutIncMean[i];
+    const dec = uutDecMean[i];
+    if (m==='' || (inc==='' && dec==='')) return '';
+    const a = inc!=='' ? Math.abs(Number(inc) - Number(m)) : 0;
+    const b = dec!=='' ? Math.abs(Number(dec) - Number(m)) : 0;
+    return Number(Math.max(a,b).toFixed(2));
+  });
   // Max hysteresis error mmHg from pairs (X1-X2) and (X3-X4)
   const hysteresisMax = uutRows.map(r => {
     const a = (r.X1===''||r.X2==='')? null : Math.abs(Number(r.X1) - Number(r.X2));
@@ -111,25 +146,17 @@ function SphygmomanometerCalibration() {
     return Number(((f - a)/5).toFixed(2));
   });
 
-  const handleMatrixChange = (setter) => (pointIdx, trialIdx, value) => {
-    setter(prev => prev.map((row, i) => i === pointIdx ? row.map((v, j) => j === trialIdx ? (value === '' ? '' : Number(value)) : v) : row));
-  };
+  // Rapid Exhaust Valve Test: time to drop from 300 mmHg to <= 15 mmHg
+  const [rapidStartPressure, setRapidStartPressure] = useState(300);
+  const [rapidEndPressure, setRapidEndPressure] = useState(15);
+  const [rapidElapsedSeconds, setRapidElapsedSeconds] = useState("");
+  const rapidPass = (() => {
+    const t = Number(rapidElapsedSeconds);
+    if (isNaN(t) || rapidElapsedSeconds === '') return '';
+    return t < 10 ? 'PASS' : 'FAIL';
+  })();
 
-  const avg = (arr) => {
-    const nums = arr.map(v => Number(v)).filter(v => !isNaN(v));
-    if (!nums.length) return 0;
-    return nums.reduce((a,b)=>a+b,0)/nums.length;
-  };
-
-  // Simple uncertainty example: U = k * sd, where sd from paired differences; placeholder until validated
-  const computeU = (refRow, uucRow, k = deviceInfo.kFactor || 2) => {
-    const diffs = [0,1,2].map(i => Number(uucRow[i]) - Number(refRow[i])).filter(v => !isNaN(v));
-    if (diffs.length < 2) return '';
-    const mean = diffs.reduce((a,b)=>a+b,0)/diffs.length;
-    const varPop = diffs.reduce((a,b)=>a + Math.pow(b-mean,2),0) / (diffs.length - 1);
-    const sd = Math.sqrt(varPop);
-    return Number((k * sd).toFixed(2));
-  };
+  // Removed legacy matrix helpers (avg/computeU) not used by Excel DKD tables
 
   const [hasLoaded, setHasLoaded] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -157,59 +184,83 @@ function SphygmomanometerCalibration() {
     confirmationType: "warning"
   });
 
-  // Validation function to check if all required fields are filled
+  // Validation function to check if all required fields are filled (Excel mirrored)
   const validateCalibrationData = () => {
     const errors = [];
 
-    // Check calibration details
-    if (!calDetails.referenceNo.trim()) errors.push('Reference Number is required');
-    if (!calDetails.sampleNo.trim()) errors.push('Sample Number is required');
-    if (!calDetails.calibratedBy.trim()) errors.push('Calibrated By is required');
-    if (!calDetails.customer.trim()) errors.push('Customer is required');
-    if (!calDetails.dateCalibrated.trim()) errors.push('Date Calibrated is required');
-    if (!calDetails.manufacturer.trim()) errors.push('Manufacturer is required');
-    if (!calDetails.model.trim()) errors.push('Model is required');
-    if (!calDetails.serialNo.trim()) errors.push('Serial Number is required');
-
-    // Check device info
-    if (!deviceInfo.cuffSize.trim()) errors.push('Cuff Size is required');
-    if (!deviceInfo.measurementRangeSys.trim()) errors.push('Systolic Measurement Range is required');
-    if (!deviceInfo.measurementRangeDia.trim()) errors.push('Diastolic Measurement Range is required');
-
-    // Check systolic readings (at least one reading per test point)
-    for (let i = 0; i < 3; i++) {
-      const hasRefReading = refSys[i].some(val => val !== '');
-      const hasUucReading = uucSys[i].some(val => val !== '');
-      if (!hasRefReading || !hasUucReading) {
-        errors.push(`Systolic readings for Test Point ${i + 1} are incomplete`);
-        break;
-      }
-    }
-
-    // Check diastolic readings (at least one reading per test point)
-    for (let i = 0; i < 3; i++) {
-      const hasRefReading = refDia[i].some(val => val !== '');
-      const hasUucReading = uucDia[i].some(val => val !== '');
-      if (!hasRefReading || !hasUucReading) {
-        errors.push(`Diastolic readings for Test Point ${i + 1} are incomplete`);
-        break;
-      }
-    }
+    // Check device info (Step 1)
+    // Device settings not required for calculations
+    // Removed SYS/DIA range validation to mirror Excel
 
     return errors;
   };
+
+  // Fetch equipment data to get the type from database
+  useEffect(() => {
+    if (!equipmentId) return;
+    
+    apiService.getSampleById(equipmentId).then(res => {
+      if (res.data) {
+        setCalDetails(prev => ({
+          ...prev,
+          // Equipment info
+          type: res.data.type || prev.type || '',
+          manufacturer: res.data.manufacturer || prev.manufacturer || '',
+          model: res.data.model || prev.model || '',
+          serialNo: res.data.serial_no || serialNumber || prev.serialNo || '',
+          range: prev.range || '',
+          accuracy: res.data.accuracy || prev.accuracy || '',
+          // Calibration details based on Excel Data Sheet mapping
+          customer: res.data.customer || prev.customer || '',
+          address: res.data.address || prev.address || '',
+          referenceNo: res.data.reference_no || prev.referenceNo || '',
+          sampleNo: (res.data.sample_no !== undefined && res.data.sample_no !== null) ? String(res.data.sample_no) : (prev.sampleNo || ''),
+          dateSubmitted: res.data.date_submitted || prev.dateSubmitted || '',
+          dateCalibrated: res.data.date_calibrated || prev.dateCalibrated || prev.dateCalibrated,
+        }));
+
+        // Map graduation to device info if available (range removed to mirror Excel)
+        setDeviceInfo(prev => ({
+          ...prev,
+          // Graduation → resolution (mmHg)
+          resolution: (res.data.graduation !== undefined && res.data.graduation !== null)
+            ? String(res.data.graduation).toString().replace(/[^0-9.]/g,'') || prev.resolution
+            : prev.resolution,
+        }));
+      }
+    }).catch(error => {
+      console.error('Error fetching equipment data:', error);
+    });
+  }, [equipmentId, serialNumber]);
 
   useEffect(() => {
     if (!equipmentId || hasLoaded) return;
     apiService.getCalibrationRecordBySampleId(equipmentId).then(res => {
       if (res.data && res.data.calibration_type === 'Sphygmomanometer' && res.data.input_data) {
         const input = typeof res.data.input_data === 'string' ? JSON.parse(res.data.input_data) : res.data.input_data;
-        setCalDetails(input.calDetails || calDetails);
-        setDeviceInfo(input.deviceInfo || deviceInfo);
-        setRefSys(input.refSys || emptyMatrix);
-        setUucSys(input.uucSys || emptyMatrix);
-        setRefDia(input.refDia || emptyMatrix);
-        setUucDia(input.uucDia || emptyMatrix);
+        
+        // Load saved calibration details
+        if (input.calDetails) {
+          setCalDetails(prev => ({ ...prev, ...input.calDetails }));
+        }
+        
+        // Load saved IPRT/UUT data
+        if (input.iprtRows) {
+          setIprtRows(input.iprtRows);
+        }
+        if (input.uutRows) {
+          setUutRows(input.uutRows);
+        }
+        
+        // Load saved pressure loss data
+        if (input.lossFirst) setLossFirst(input.lossFirst);
+        if (input.lossAfter5) setLossAfter5(input.lossAfter5);
+        
+        // Load saved rapid exhaust data
+        if (input.rapidStartPressure) setRapidStartPressure(input.rapidStartPressure);
+        if (input.rapidEndPressure) setRapidEndPressure(input.rapidEndPressure);
+        if (input.rapidElapsedSeconds) setRapidElapsedSeconds(input.rapidElapsedSeconds);
+        
         setHasLoaded(true);
       }
     }).catch(() => {});
@@ -219,22 +270,26 @@ function SphygmomanometerCalibration() {
   const saveCalibration = async () => {
     if (!equipmentId) { toast.error('Equipment not found.'); return; }
     try {
-      const input_data = { calDetails, deviceInfo, refSys, uucSys, refDia, uucDia, currentStep,
-        appliedPressures, iprtRows, uutRows, lossPressures, lossFirst, lossAfter5 };
+      const input_data = { ...calDetails, envEndTime: new Date().toTimeString().slice(0,5) };
+      const payload_input = { calDetails: input_data, currentStep,
+        appliedPressures, iprtRows, uutRows, lossPressures, lossFirst, lossAfter5,
+        rapidStartPressure, rapidEndPressure, rapidElapsedSeconds };
       const result_data = {
-        sys: [0,1,2].map(i => ({ ref: avg(refSys[i]), uuc: avg(uucSys[i]), U: computeU(refSys[i], uucSys[i]) })),
-        dia: [0,1,2].map(i => ({ ref: avg(refDia[i]), uuc: avg(uucDia[i]), U: computeU(refDia[i], uucDia[i]) })),
         iprtMean,
         uutMean,
+        uutIncMean,
+        uutDecMean,
         deviationMmHg,
         deviationKPa,
+        maxDeviation,
         hysteresisMax,
         lossRate,
+        rapidExhaust: { start: rapidStartPressure, end: rapidEndPressure, elapsedSeconds: rapidElapsedSeconds, result: rapidPass },
       };
       await apiService.saveCalibrationRecord({
         sample_id: equipmentId,
         calibration_type: 'Sphygmomanometer',
-        input_data,
+        input_data: payload_input,
         result_data,
         calibrated_by: user?.id || 1, // Get from auth context, fallback to 1
         date_started: new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -304,55 +359,81 @@ function SphygmomanometerCalibration() {
   };
 
   const renderStepper = () => (
-    <div className="flex items-center justify-between mb-6">
-      {steps.map((s, idx) => {
-        const isActive = currentStep === s.id;
-        const isCompleted = currentStep > s.id;
-        return (
-          <div key={s.id} className="flex items-center">
-            <div className={`flex items-center justify-center w-9 h-9 rounded-full border-2 shadow-sm ${isActive ? 'bg-[#2a9dab] border-[#2a9dab] text-white' : isCompleted ? 'bg-[#2a9dab] border-[#2a9dab] text-white' : 'bg-white border-[#2a9dab] text-[#2a9dab]'}`}>
-              {s.icon}
+    <div className="mb-6">
+      <div className="flex items-center justify-between w-full">
+        {steps.map((s, idx) => {
+          const isActive = currentStep === s.id;
+          const isCompleted = currentStep > s.id;
+          return (
+            <div key={s.id} className="flex items-center flex-1">
+              <div className="flex flex-col items-center">
+                <div
+                  className={`flex items-center justify-center w-9 h-9 rounded-full border-2 shadow-sm transition-colors text-lg font-bold
+                    ${isActive ? 'bg-[#2a9dab] border-[#2a9dab] text-white scale-110' :
+                      isCompleted ? 'bg-[#2a9dab] border-[#2a9dab] text-white' :
+                      'bg-white border-[#2a9dab] text-[#2a9dab]'}
+                  `}
+                  style={{ transition: 'all 0.2s' }}
+                >
+                  {React.cloneElement(s.icon, {
+                    className: isActive
+                      ? 'text-white'
+                      : isCompleted
+                      ? 'text-white'
+                      : 'text-[#2a9dab]'
+                  })}
+                </div>
+                <div className="mt-2 text-center">
+                  <p className={`text-xs font-semibold tracking-wide ${
+                    isActive ? 'text-[#2a9dab]' :
+                    isCompleted ? 'text-[#2a9dab]' :
+                    'text-gray-500'
+                  }`}>
+                    {s.title}
+                  </p>
+                </div>
+              </div>
+              {idx < steps.length - 1 && (
+                <div className={`flex-1 h-1 mx-2 rounded-full ${isCompleted ? 'bg-[#2a9dab]' : 'bg-[#e0f7fa]'}`} />
+              )}
             </div>
-            <div className="ml-2 text-xs font-semibold">
-              {s.title}
-            </div>
-            {idx < steps.length - 1 && (
-              <div className={`w-8 h-1 mx-2 rounded-full ${isCompleted ? 'bg-[#2a9dab]' : 'bg-[#e0f7fa]'}`} />
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 
   const readingsTable = (label, refMatrix, uucMatrix, onRefChange, onUucChange, unit) => (
     <CardSection>
-      <h3 className="font-semibold mb-2">{label}</h3>
-      <div className="overflow-x-auto">
-        <table className="min-w-[600px] border text-xs mb-2">
+      <div className="flex items-center mb-3">
+        <MdScience className="h-5 w-5 text-[#2a9dab] mr-2" />
+        <span className="text-[#2a9dab] font-semibold text-sm">{label}</span>
+      </div>
+      <div className="overflow-x-auto mb-4">
+        <table className="min-w-full border text-sm mb-2">
           <thead>
-            <tr>
-              <th className="border p-1">Trial</th>
-              <th className="border p-1" colSpan={3}>Reference ({unit})</th>
-              <th className="border p-1" colSpan={3}>UUC ({unit})</th>
+            <tr className="bg-gray-100">
+              <th className="border px-2 py-1">Trial</th>
+              <th className="border px-2 py-1" colSpan={3}>Reference ({unit})</th>
+              <th className="border px-2 py-1" colSpan={3}>UUC ({unit})</th>
             </tr>
             <tr>
-              <th className="border p-1"></th>
-              {[1,2,3].map(i => <th key={`r${i}`} className="border p-1">Testpoint {i}</th>)}
-              {[1,2,3].map(i => <th key={`u${i}`} className="border p-1">Testpoint {i}</th>)}
+              <th className="border px-2 py-1"></th>
+              {[1,2,3].map(i => <th key={`r${i}`} className="border px-2 py-1">Testpoint {i}</th>)}
+              {[1,2,3].map(i => <th key={`u${i}`} className="border px-2 py-1">Testpoint {i}</th>)}
             </tr>
           </thead>
           <tbody>
             {[0,1,2].map(trial => (
               <tr key={trial}>
-                <td className="border p-1 font-medium">{trial+1}</td>
+                <td className="border px-2 py-1 font-medium">{trial+1}</td>
                 {[0,1,2].map(point => (
-                  <td key={`ref-${trial}-${point}`} className="border p-1">
+                  <td key={`ref-${trial}-${point}`} className="border px-2 py-1">
                     <ModernInput type="number" inputMode="decimal" value={refMatrix[point][trial] ?? ''} onChange={e => onRefChange(point, trial, e.target.value)} />
                   </td>
                 ))}
                 {[0,1,2].map(point => (
-                  <td key={`uuc-${trial}-${point}`} className="border p-1">
+                  <td key={`uuc-${trial}-${point}`} className="border px-2 py-1">
                     <ModernInput type="number" inputMode="decimal" value={uucMatrix[point][trial] ?? ''} onChange={e => onUucChange(point, trial, e.target.value)} />
                   </td>
                 ))}
@@ -361,14 +442,14 @@ function SphygmomanometerCalibration() {
           </tbody>
           <tfoot>
             <tr className="bg-gray-50">
-              <td className="border p-1 font-bold">Average</td>
-              {[0,1,2].map(i => <td key={`ra${i}`} className="border p-1 text-center">{avg(refMatrix[i]).toFixed(2)}</td>)}
-              {[0,1,2].map(i => <td key={`ua${i}`} className="border p-1 text-center">{avg(uucMatrix[i]).toFixed(2)}</td>)}
+              <td className="border px-2 py-1 font-bold">Average</td>
+              {[0,1,2].map(i => <td key={`ra${i}`} className="border px-2 py-1 text-center">{avg(refMatrix[i]).toFixed(2)}</td>)}
+              {[0,1,2].map(i => <td key={`ua${i}`} className="border px-2 py-1 text-center">{avg(uucMatrix[i]).toFixed(2)}</td>)}
             </tr>
             <tr className="bg-gray-100">
-              <td className="border p-1 font-bold">U</td>
-              {[0,1,2].map(i => <td key={`u-${i}`} className="border p-1 text-center" colSpan={1}>{computeU(refMatrix[i], uucMatrix[i])}</td>)}
-              <td className="border p-1" colSpan={2}></td>
+              <td className="border px-2 py-1 font-bold">U</td>
+              {[0,1,2].map(i => <td key={`u-r-${i}`} className="border px-2 py-1 text-center"></td>)}
+              {[0,1,2].map(i => <td key={`u-u-${i}`} className="border px-2 py-1 text-center">{computeU(refMatrix[i], uucMatrix[i])}</td>)}
             </tr>
           </tfoot>
         </table>
@@ -381,48 +462,55 @@ function SphygmomanometerCalibration() {
       case 1:
         return (
           <CardSection>
-            <h2 className="text-lg font-bold mb-2">Calibration Details</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <ModernInput placeholder="Reference No." value={calDetails.referenceNo} onChange={e => setCalDetails(d => ({...d, referenceNo: e.target.value}))} />
-              <ModernInput placeholder="Sample No." value={calDetails.sampleNo} onChange={e => setCalDetails(d => ({...d, sampleNo: e.target.value}))} />
-              <ModernInput placeholder="Calibrated by" value={calDetails.calibratedBy} onChange={e => setCalDetails(d => ({...d, calibratedBy: e.target.value}))} />
-              <ModernInput placeholder="Customer" value={calDetails.customer} onChange={e => setCalDetails(d => ({...d, customer: e.target.value}))} />
-              <ModernInput placeholder="Address" value={calDetails.address} onChange={e => setCalDetails(d => ({...d, address: e.target.value}))} />
-              <ModernInput placeholder="Date Submitted" value={calDetails.dateSubmitted} onChange={e => setCalDetails(d => ({...d, dateSubmitted: e.target.value}))} />
-              <ModernInput placeholder="Date Calibrated" value={calDetails.dateCalibrated} onChange={e => setCalDetails(d => ({...d, dateCalibrated: e.target.value}))} />
-              <ModernInput placeholder="Type" value={calDetails.type} onChange={e => setCalDetails(d => ({...d, type: e.target.value}))} />
-              <ModernInput placeholder="Manufacturer" value={calDetails.manufacturer} onChange={e => setCalDetails(d => ({...d, manufacturer: e.target.value}))} />
-              <ModernInput placeholder="Model" value={calDetails.model} onChange={e => setCalDetails(d => ({...d, model: e.target.value}))} />
-              <ModernInput placeholder="Serial No." value={calDetails.serialNo} onChange={e => setCalDetails(d => ({...d, serialNo: e.target.value}))} />
+            <div className="flex items-center mb-3">
+              <MdInfo className="h-5 w-5 text-[#2a9dab] mr-2" />
+              <span className="text-[#2a9dab] font-semibold text-sm">Step 1: Identity, Specifications, and Environment</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <div className="text-sm font-semibold text-gray-700 mb-2">Identity and Specifications of Sphygmomanometer</div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Model</label>
+                    <ModernInput value={calDetails.model} onChange={e=> setCalDetails(d=>({...d, model: e.target.value}))} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Serial No.</label>
+                    <ModernInput value={calDetails.serialNo} onChange={e=> setCalDetails(d=>({...d, serialNo: e.target.value}))} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Range</label>
+                    <ModernInput value={calDetails.range} onChange={e=> setCalDetails(d=>({...d, range: e.target.value}))} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Accuracy</label>
+                    <ModernInput value={calDetails.accuracy} onChange={e=> setCalDetails(d=>({...d, accuracy: e.target.value}))} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="md:col-span-2 mt-2">
+                <div className="text-sm font-semibold text-gray-700 mb-2">Environment Condition</div>
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+                  {/* Start/End Time removed; handled automatically */}
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Temp Start (°C)</label>
+                    <ModernInput type="number" inputMode="decimal" value={calDetails.envTempStart} onChange={e=> setCalDetails(d=>({...d, envTempStart: e.target.value}))} />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Humidity Start (%RH)</label>
+                    <ModernInput type="number" inputMode="decimal" value={calDetails.envHumidityStart} onChange={e=> setCalDetails(d=>({...d, envHumidityStart: e.target.value}))} />
+                  </div>
+                  {/* End Temp/Humidity moved to Rapid Exhaust section */}
+                  {/* Pressure Start/End (hPa) removed per request */}
+                </div>
+              </div>
+
+              {/* Device Settings removed: not used in calculations */}
             </div>
           </CardSection>
         );
       case 2:
-        return (
-          <CardSection>
-            <h2 className="text-lg font-bold mb-2">Device Info</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <ModernInput placeholder="Cuff Size" value={deviceInfo.cuffSize} onChange={e => setDeviceInfo(d => ({...d, cuffSize: e.target.value}))} />
-              <ModernInput placeholder="Range (SYS) mmHg" value={deviceInfo.measurementRangeSys} onChange={e => setDeviceInfo(d => ({...d, measurementRangeSys: e.target.value}))} />
-              <ModernInput placeholder="Range (DIA) mmHg" value={deviceInfo.measurementRangeDia} onChange={e => setDeviceInfo(d => ({...d, measurementRangeDia: e.target.value}))} />
-              <ModernInput placeholder="Resolution (mmHg)" value={deviceInfo.resolution} onChange={e => setDeviceInfo(d => ({...d, resolution: e.target.value}))} />
-              <ModernInput placeholder="k-Factor" value={deviceInfo.kFactor} onChange={e => setDeviceInfo(d => ({...d, kFactor: Number(e.target.value) || 2}))} />
-            </div>
-          </CardSection>
-        );
-      case 3:
-        return (
-          <>
-            {readingsTable('Systolic (SYS) Readings', refSys, uucSys, handleMatrixChange(setRefSys), handleMatrixChange(setUucSys), 'mmHg')}
-          </>
-        );
-      case 4:
-        return (
-          <>
-            {readingsTable('Diastolic (DIA) Readings', refDia, uucDia, handleMatrixChange(setRefDia), handleMatrixChange(setUucDia), 'mmHg')}
-          </>
-        );
-      case 5:
         return (
           <>
             <CardSection>
@@ -446,13 +534,18 @@ function SphygmomanometerCalibration() {
                   <tbody>
                     {appliedPressures.map((p,idx)=> (
                       <tr key={p}>
-                        <td className="border p-1 text-center">{p}</td>
+                        <td className="border p-1 text-center">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span>{p}</span>
+                            <span className="text-[10px] text-gray-500">{mmHgToKPa(p)} kPa</span>
+                          </div>
+                        </td>
                         {['X1','X2','X3','X4'].map(k => (
                           <td key={k} className="border p-1">
                             <ModernInput type="number" inputMode="decimal" value={iprtRows[idx][k] ?? ''} onChange={e=> setIprtCell(idx,k,e.target.value)} />
                           </td>
                         ))}
-                        <td className="border p-1 text-center bg-gray-50">{iprtMean[idx]!==''? iprtMean[idx] : ''}</td>
+                        <td className="border p-1 text-center bg-gray-50">{iprtMean[idx]!==''? formatDec(iprtMean[idx], 6) : ''}</td>
                         <td className="border p-1">
                           <div className="grid grid-cols-4 gap-1">
                             {['X1','X2','X3','X4'].map(k => (
@@ -460,9 +553,9 @@ function SphygmomanometerCalibration() {
                             ))}
                           </div>
                         </td>
-                        <td className="border p-1 text-center bg-gray-50">{deviationMmHg[idx]!==''? deviationMmHg[idx] : ''}</td>
-                        <td className="border p-1 text-center bg-gray-50">{deviationKPa[idx]!==''? deviationKPa[idx] : ''}</td>
-                        <td className="border p-1 text-center bg-gray-50">{hysteresisMax[idx]!==''? hysteresisMax[idx] : ''}</td>
+                        <td className="border p-1 text-center bg-gray-50">{deviationMmHg[idx]!==''? formatDec(deviationMmHg[idx], 6) : ''}</td>
+                        <td className="border p-1 text-center bg-gray-50">{deviationKPa[idx]!==''? formatDec(deviationKPa[idx], 6) : ''}</td>
+                        <td className="border p-1 text-center bg-gray-50">{hysteresisMax[idx]!==''? formatDec(hysteresisMax[idx], 6) : ''}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -471,7 +564,7 @@ function SphygmomanometerCalibration() {
             </CardSection>
           </>
         );
-      case 6:
+      case 3:
         return (
           <>
             <CardSection>
@@ -501,22 +594,111 @@ function SphygmomanometerCalibration() {
             </CardSection>
           </>
         );
-      case 7:
+      case 4:
+        return (
+          <>
+            <CardSection>
+              <h3 className="font-semibold mb-2">Rapid Exhaust Valve Test</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Start Pressure (mmHg)</label>
+                  <ModernInput type="number" value={rapidStartPressure} onChange={e=> setRapidStartPressure(Number(e.target.value)||0)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">End Pressure Target (≤ mmHg)</label>
+                  <ModernInput type="number" value={rapidEndPressure} onChange={e=> setRapidEndPressure(Number(e.target.value)||0)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Elapsed Time (seconds)</label>
+                  <ModernInput type="number" value={rapidElapsedSeconds} onChange={e=> setRapidElapsedSeconds(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">End Temperature (°C)</label>
+                  <ModernInput type="number" inputMode="decimal" value={calDetails.envTempEnd} onChange={e=> setCalDetails(d=>({...d, envTempEnd: e.target.value}))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">End Humidity (%RH)</label>
+                  <ModernInput type="number" inputMode="decimal" value={calDetails.envHumidityEnd} onChange={e=> setCalDetails(d=>({...d, envHumidityEnd: e.target.value}))} />
+                </div>
+              </div>
+              <div className="mt-3 text-sm">
+                <div>Criteria: drop from {rapidStartPressure} mmHg to ≤ {rapidEndPressure} mmHg in less than 10 s</div>
+                <div className={`mt-1 font-semibold ${rapidPass === 'PASS' ? 'text-green-600' : rapidPass === 'FAIL' ? 'text-red-600' : 'text-gray-600'}`}>Result: {rapidPass || '—'}</div>
+              </div>
+            </CardSection>
+          </>
+        );
+      case 5:
         return (
           <CardSection>
             <h2 className="text-lg font-bold mb-3">Results & Summary</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <div className="font-semibold mb-1">Systolic</div>
-                {[0,1,2].map(i => (
-                  <div key={`sys-${i}`} className="text-sm mb-1">TP{i+1}: Ref {avg(refSys[i]).toFixed(2)} | UUC {avg(uucSys[i]).toFixed(2)} | U {computeU(refSys[i], uucSys[i])}</div>
-                ))}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="font-semibold mb-1">I. Maximum Deviation</div>
+                <div className="text-xs text-gray-600 mb-2">Per applied pressure: UUT increasing/decreasing vs IPRT, and maximum permissible error (± 4 mmHg).</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full border text-xs">
+                    <thead>
+                      <tr>
+                        <th className="border p-1">Applied (mmHg)</th>
+                        <th className="border p-1">UUT Inc Mean</th>
+                        <th className="border p-1">UUT Dec Mean</th>
+                        <th className="border p-1">Max Deviation (mmHg)</th>
+                        <th className="border p-1">Max Permissible</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {appliedPressures.map((p,i)=> (
+                        <tr key={`res-dev-${p}`}>
+                          <td className="border p-1 text-center">{p}</td>
+                          <td className="border p-1 text-center">{uutIncMean[i]!==''? formatDec(uutIncMean[i],2):''}</td>
+                          <td className="border p-1 text-center">{uutDecMean[i]!==''? formatDec(uutDecMean[i],2):''}</td>
+                          <td className="border p-1 text-center">{maxDeviation[i]!==''? formatDec(maxDeviation[i],2):''}</td>
+                          <td className="border p-1 text-center whitespace-nowrap">within ± 4 mmHg</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div>
-                <div className="font-semibold mb-1">Diastolic</div>
-                {[0,1,2].map(i => (
-                  <div key={`dia-${i}`} className="text-sm mb-1">TP{i+1}: Ref {avg(refDia[i]).toFixed(2)} | UUC {avg(uucDia[i]).toFixed(2)} | U {computeU(refDia[i], uucDia[i])}</div>
-                ))}
+
+              <div className="space-y-4">
+                <div className="font-semibold mb-1">III. Test for Air Leakage of the Pneumatic System</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full border text-xs">
+                    <thead>
+                      <tr>
+                        <th className="border p-1">Applied (mmHg)</th>
+                        <th className="border p-1">1st Reading</th>
+                        <th className="border p-1">After 5 min</th>
+                        <th className="border p-1">Rate (mmHg/min)</th>
+                        <th className="border p-1">Max Permissible Error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lossPressures.map((p,idx)=> (
+                        <tr key={`res-air-${p}`}>
+                          <td className="border p-1 text-center">{p}</td>
+                          <td className="border p-1 text-center">{lossFirst[idx] || ''}</td>
+                          <td className="border p-1 text-center">{lossAfter5[idx] || ''}</td>
+                          <td className="border p-1 text-center">{lossRate[idx]!==''? formatDec(lossRate[idx],2):''}</td>
+                          <td className="border p-1 text-center">≤4.0 mmHg/min</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="font-semibold mb-1">II. Test for Hysteresis Error</div>
+                <div className="text-xs text-gray-600 mb-1">Maximum hysteresis error (mmHg) across pressure points. Limit: within ± 4 mmHg.</div>
+                <div className="text-sm">Maximum Hysteresis Error: {formatDec(Math.max(...hysteresisMax.filter(v=>v!=='')),2) || '—'} (limit: within ± 4 mmHg)</div>
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="font-semibold mb-1">Rapid Exhaust Valve Test</div>
+                <div className="text-sm">Drop from {rapidStartPressure} → ≤{rapidEndPressure} mmHg in {'<'} 10 s: {rapidPass || '—'}</div>
               </div>
             </div>
           </CardSection>
@@ -527,24 +709,29 @@ function SphygmomanometerCalibration() {
   };
 
   return (
-    <div className="p-4 md:p-8 bg-gray-100 min-h-screen font-sans">
-      <Toaster />
-      <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8">
-        <div className="flex justify-between items-start mb-4">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Sphygmomanometer Calibration</h1>
-          <ModernButton onClick={handleBackClick} className="ml-2 flex-shrink-0">Back</ModernButton>
-        </div>
-        {renderStepper()}
-        <div className="mt-6 min-h-[320px]">
-          {renderStep()}
-        </div>
-        <div className="flex justify-between items-center mt-6 pt-6 border-t border-gray-200">
-          <ModernButton onClick={() => setCurrentStep(Math.max(1, currentStep - 1))} disabled={currentStep === 1}>Previous</ModernButton>
-          {currentStep < steps.length ? (
-            <ModernButton onClick={async () => { await saveCalibration(); setCurrentStep(currentStep + 1); }}>Next</ModernButton>
-          ) : (
-            <ModernButton className="bg-green-600 hover:bg-green-700" onClick={completeCalibration}>Confirm Calibration</ModernButton>
-          )}
+    <div className="bg-gray-100 min-h-screen p-4">
+      <Toaster position="top-right" />
+      <div className="w-full mx-auto">
+        <div className="bg-white p-8 rounded-lg shadow-md w-full mb-8 border border-blue-100 relative">
+          <div className="flex items-center mb-2 pr-20">
+            <h1 className="text-2xl font-bold text-black">Sphygmomanometer Calibration</h1>
+          </div>
+          {renderStepper()}
+          <div className="rounded-lg border p-3 bg-white shadow-sm border-blue-100">
+            {renderStep()}
+            <div className="flex justify-between mt-4 pt-3 border-t">
+              <div className="flex space-x-2">
+                <ModernButton onClick={() => setCurrentStep(Math.max(1, currentStep - 1))} disabled={currentStep === 1}>Previous</ModernButton>
+              </div>
+              <div className="flex space-x-2">
+                {currentStep < steps.length ? (
+                  <ModernButton onClick={async () => { await saveCalibration(); setCurrentStep(currentStep + 1); }}>Next</ModernButton>
+                ) : (
+                  <ModernButton className="bg-green-600 hover:bg-green-700" onClick={completeCalibration}>Confirm Calibration</ModernButton>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
