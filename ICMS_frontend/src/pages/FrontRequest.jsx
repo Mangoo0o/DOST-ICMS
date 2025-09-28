@@ -413,6 +413,19 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
           }
         }
       }
+      
+      // Create transaction record for the reservation
+      try {
+        console.log('Creating transaction for reference:', referenceNumber);
+        await apiService.createTransaction({ reservation_ref_no: referenceNumber });
+        toast.success('Transaction created for new reservation');
+      } catch (err) {
+        console.error('Transaction creation error:', err.response?.data);
+        if (!err?.response?.data?.message?.includes('Duplicate entry')) {
+          toast.error('Transaction creation failed: ' + (err.response?.data?.message || 'Unknown error'));
+        }
+      }
+      
       toast.success('Request submitted successfully');
       setIsExpectedCompletionManuallySet(false);
       onClose();

@@ -216,7 +216,7 @@ function WeighingScaleCalculation() {
     serialNumber: '',
     makeModel: '',
     capacity: '',
-    readability: '',
+    readability: '1',
     tempStart: '',
     tempEnd: '',
     humidityStart: '',
@@ -292,31 +292,42 @@ function WeighingScaleCalculation() {
   // Fetch request details to populate certificate information
   useEffect(() => {
     if (sampleId) {
+      console.log('Fetching certificate information for sampleId:', sampleId);
       // First get the sample details to get the reference number
       apiService.getSampleById(sampleId).then(sampleRes => {
         const sample = sampleRes.data;
-        if (sample.reference_number) {
-          // Fetch request details using the reference number
-          apiService.getRequestDetails(sample.reference_number).then(requestRes => {
-            const requestData = requestRes.data;
+        console.log('Sample data:', sample); // Debug log
+        if (sample && sample.reservation_ref_no) {
+          console.log('Found reservation_ref_no:', sample.reservation_ref_no);
+          // Fetch request details using the reservation reference number
+          apiService.getRequestDetails(sample.reservation_ref_no).then(requestRes => {
+            const requestData = requestRes.data || requestRes; // Handle both wrapped and direct responses
+            console.log('Request data:', requestData); // Debug log
             if (requestData) {
               // Populate certificate information from request data
               setEquipment(prev => ({
                 ...prev,
                 customerName: requestData.client_name || requestData.customer_name || '',
-                customerAddress: requestData.client_address || requestData.customer_address || '',
+                customerAddress: requestData.client_address || requestData.address || requestData.customer_address || '',
                 referenceNo: requestData.reference_number || '',
                 sampleNo: sample.serial_no || '',
-                dateSubmitted: requestData.date_submitted || requestData.date_created || new Date().toISOString().split('T')[0],
+                dateSubmitted: requestData.date_created || new Date().toISOString().split('T')[0],
               }));
+              console.log('Certificate information populated successfully');
+            } else {
+              console.log('No request data found');
             }
           }).catch(err => {
-            console.log('Error fetching request details:', err);
+            console.error('Error fetching request details:', err);
           });
+        } else {
+          console.log('No reservation_ref_no found in sample data or sample is null');
         }
       }).catch(err => {
-        console.log('Error fetching sample details:', err);
+        console.error('Error fetching sample details:', err);
       });
+    } else {
+      console.log('No sampleId provided for certificate information');
     }
   }, [sampleId]);
 
@@ -455,11 +466,11 @@ function WeighingScaleCalculation() {
     ? (center1 + center2) / 2
     : (!isNaN(center1) ? center1 : (!isNaN(center2) ? center2 : undefined));
   const cornerIndices = [1, 2, 3, 4];
-  const cornerDiffs = cornerIndices.map(i => {
+  const cornerErrors = cornerIndices.map(i => {
     const ind = parseFloat(eccRows[i]?.indication);
-    return isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(ind - centerIndication);
+    return isNaN(centerIndication) || isNaN(ind) ? 0 : ind - centerIndication;
   });
-  const maxImax = Math.max(...cornerDiffs);
+  const maxImax = Math.max(...cornerErrors);
 
   // Step 5: Repeatability Test
   const [repeatabilityReadings, setRepeatabilityReadings] = useState(Array(10).fill(''));
@@ -467,6 +478,27 @@ function WeighingScaleCalculation() {
   const handleRepeatabilityChange = (idx, value) => {
     // Only allow numbers or empty string
     if (value === '' || !isNaN(Number(value))) {
+      // Check if user is trying to skip readings
+      const isEmpty = value === '' || value === null || value === undefined;
+      const isValidNumber = !isEmpty && !isNaN(Number(value));
+      
+      // If user is entering a value, check if previous readings are filled
+      if (isValidNumber) {
+        for (let i = 0; i < idx; i++) {
+          const prevReading = repeatabilityReadings[i];
+          const prevIsEmpty = prevReading === '' || prevReading === null || prevReading === undefined;
+          const prevIsInvalid = prevIsEmpty || isNaN(Number(prevReading));
+          
+          if (prevIsInvalid) {
+            toast.error(`Please fill Reading ${i + 1} before entering Reading ${idx + 1}.`, {
+              position: 'top-center',
+              duration: 3000,
+            });
+            return; // Don't update the value
+          }
+        }
+      }
+      
       const updated = [...repeatabilityReadings];
       updated[idx] = value;
       setRepeatabilityReadings(updated);
@@ -487,7 +519,7 @@ const u_rep_all = stddevRepeat;
   // Helper: readability with default (ensures rounding columns not zero)
   const getReadability = () => {
     const val = safeNum(equipment.readability);
-    return val > 0 ? val : 100; // default to 100 g if not provided
+    return val > 0 ? val : 1; // default to 1 g if not provided
   };
 
   // Add this helper function for per-row expanded uncertainty
@@ -500,12 +532,12 @@ const u_rep_all = stddevRepeat;
     const u_air_row = mpe_g_row / (4 * Math.sqrt(3));
     const u_drift_row = mpe_g_row / (3 * Math.sqrt(3));
     const u_conv_row = mpe_g_row / (3 * Math.sqrt(3));
-    const u_round0_row = d_row / (2 * Math.sqrt(3));
-    const u_round1_row = d_row / (2 * Math.sqrt(3));
+    const u_round0_row = d_row / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
+    const u_round1_row = d_row / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
     let Imax_row = 0;
     if (idx < 4) {
       const ind = parseFloat(eccRows[cornerIndices[idx]]?.indication);
-      Imax_row = isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(ind - centerIndication);
+      Imax_row = isNaN(centerIndication) || isNaN(ind) ? 0 : ind - centerIndication;
     } else {
       Imax_row = maxImax;
     }
@@ -531,7 +563,7 @@ const u_rep_all = stddevRepeat;
   const u_drift = mpe_g / (3 * Math.sqrt(3));
   // Convection (MPE/(3*sqrt(3)))
   const u_conv = mpe_g / (3 * Math.sqrt(3));
-  // Rounding error (d/(2*sqrt(3))), d = readability
+  // Rounding error =Readability/(2*SQRT(3))
   const d = getReadability();
   const u_round0 = d / (2 * Math.sqrt(3));
   const u_round1 = d / (2 * Math.sqrt(3));
@@ -653,35 +685,35 @@ const u_rep_all = stddevRepeat;
             </div>
             
             {/* Certificate Information Display */}
-            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="mb-5 p-4 bg-blue-50 rounded-lg border border-blue-200">
               <h3 className="text-sm font-semibold text-blue-800 mb-3">Certificate Information</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Customer Name:</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name:</label>
                   <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
                     {equipment.customerName || 'Loading...'}
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Customer Address:</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Customer Address:</label>
                   <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
                     {equipment.customerAddress || 'Loading...'}
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Reference No.:</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Reference No.:</label>
                   <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
                     {equipment.referenceNo || 'Loading...'}
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Sample No.:</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Sample No.:</label>
                   <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
                     {equipment.sampleNo || 'Loading...'}
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Date Submitted:</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Date Submitted:</label>
                   <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
                     {equipment.dateSubmitted || 'Loading...'}
                   </div>
@@ -689,127 +721,135 @@ const u_rep_all = stddevRepeat;
               </div>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Serial Number:</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Serial Number:</label>
                 {modernInput({
                   name: 'serialNumber',
                   value: equipment.serialNumber,
                   readOnly: true,
-                  className: 'bg-gray-100',
+                  className: 'bg-gray-100 text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Make/Model:</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Make/Model:</label>
                 {modernInput({
                   name: 'makeModel',
                   value: equipment.makeModel,
                   onChange: handleEquipmentChange,
-                  placeholder: 'e.g. Mettler Toledo',
+                  placeholder: 'Mettler Toledo',
+                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Temperature Start (°C):</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Temperature Start (°C):</label>
                 {modernInput({
                   name: 'tempStart',
                   value: equipment.tempStart,
                   onChange: handleEquipmentChange,
-                  placeholder: 'e.g. 23.0',
+                  placeholder: '23.0',
                   type: 'number',
+                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Temperature End (°C):</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Temperature End (°C):</label>
                 {modernInput({
                   name: 'tempEnd',
                   value: equipment.tempEnd,
                   onChange: handleEquipmentChange,
-                  placeholder: 'e.g. 23.2',
+                  placeholder: '23.2',
                   type: 'number',
+                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Humidity Start (%):</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Humidity Start (%):</label>
                 {modernInput({
                   name: 'humidityStart',
                   value: equipment.humidityStart,
                   onChange: handleEquipmentChange,
-                  placeholder: 'e.g. 45',
+                  placeholder: '45',
                   type: 'number',
+                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Humidity End (%):</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Humidity End (%):</label>
                 {modernInput({
                   name: 'humidityEnd',
                   value: equipment.humidityEnd,
                   onChange: handleEquipmentChange,
-                  placeholder: 'e.g. 46',
+                  placeholder: '46',
                   type: 'number',
-                  className: 'mb-4',
+                  className: 'text-sm py-3',
                 })}
               </div>
             </div>
-            {/* Remove the 'Weights' label above the Type, Certificate No., and Date of Last Calibration input fields */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            {/* Weight Standards and Capacity Information */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Type:</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Type:</label>
                 {modernInput({
                   name: 'weightType',
                   value: equipment.weightType || '',
                   onChange: handleEquipmentChange,
-                  placeholder: 'e.g. OIML Class M',
+                  placeholder: 'OIML Class M',
+                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Certificate No.:</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Certificate No.:</label>
                 {modernInput({
                   name: 'weightCertNo',
                   value: equipment.weightCertNo || '',
                   onChange: handleEquipmentChange,
                   placeholder: '',
+                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Date of Last Calibration:</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date of Last Calibration:</label>
                 {modernInput({
                   name: 'weightLastCal',
                   value: equipment.weightLastCal || '',
                   onChange: handleEquipmentChange,
                   placeholder: '',
                   type: 'date',
+                  className: 'text-sm py-3',
                 })}
               </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Maximum Capacity (g):</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Maximum Capacity (g):</label>
                 {modernInput({
                   name: 'maxCapacity',
                   value: equipment.maxCapacity || '',
                   onChange: handleEquipmentChange,
-                  placeholder: 'e.g. 120000',
+                  placeholder: '120000',
                   type: 'number',
+                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Minimum Capacity (g):</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Capacity (g):</label>
                 {modernInput({
                   name: 'minCapacity',
                   value: equipment.minCapacity || '',
                   onChange: handleEquipmentChange,
-                  placeholder: 'e.g. 0',
+                  placeholder: '0',
                   type: 'number',
+                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Readability (g):</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Readability (g):</label>
                 {modernInput({
                   name: 'readability',
                   value: equipment.readability,
                   onChange: handleEquipmentChange,
-                  placeholder: 'e.g. 250',
+                  placeholder: '250',
                   type: 'number',
+                  className: 'text-sm py-3',
                 })}
               </div>
             </div>
@@ -835,7 +875,7 @@ const u_rep_all = stddevRepeat;
                   {eccRows.map((row, idx) => {
                     const isCenter = row.position.startsWith('Center');
                     const ind = parseFloat(row.indication);
-                    const error = isCenter ? '' : (isNaN(centerIndication) || isNaN(ind) ? '' : (ind - centerIndication).toFixed(6));
+                    const error = isCenter ? '' : (isNaN(centerIndication) || isNaN(ind) ? '' : (ind - centerIndication).toFixed(2));
                     // Show 'Center' label for both Center 1 and Center 2
                     const displayPosition = row.position.startsWith('Center') ? 'Center' : row.position;
                     return (
@@ -859,8 +899,8 @@ const u_rep_all = stddevRepeat;
             </div>
             {/* Replace the styled summary with plain text */}
             <div className="mt-2 text-sm">
-              <div>Average of Center (g): <span className="font-mono">{centerIndication ? centerIndication.toFixed(6) : '0.000000'}</span></div>
-              <div><span style={{fontStyle:'italic'}}>I</span><sub>max</sub> (g): <span className="font-mono">{maxImax.toFixed(6)}</span></div>
+              <div>Average of Center (g): <span className="font-mono">{centerIndication ? centerIndication.toFixed(2) : '0.00'}</span></div>
+              <div><span style={{fontStyle:'italic'}}>I</span><sub>max</sub> (g): <span className="font-mono">{maxImax.toFixed(2)}</span></div>
             </div>
           </CardSection>
         );
@@ -873,18 +913,30 @@ const u_rep_all = stddevRepeat;
             </div>
             <div className="mb-2 text-xs text-gray-600">Enter 10 readings for the same load:</div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
-              {repeatabilityReadings.map((val, idx) => (
-                <div key={idx}>
-                  <label className="block text-xs text-gray-500 mb-1">Reading {idx + 1}</label>
-                  {modernInput({
-                    value: val || '', // Always a string or empty
-                    onChange: e => handleRepeatabilityChange(idx, e.target.value),
-                    type: 'number',
-                    placeholder: `R${idx + 1}`,
-                    className: 'w-24',
-                  })}
-                </div>
-              ))}
+              {repeatabilityReadings.map((val, idx) => {
+                // Check if this field should be enabled (previous fields are filled)
+                const isEnabled = idx === 0 || repeatabilityReadings.slice(0, idx).every(reading => 
+                  reading !== '' && reading !== null && reading !== undefined && !isNaN(Number(reading))
+                );
+                
+                return (
+                  <div key={idx}>
+                    <label className={`block text-xs mb-1 ${
+                      isEnabled ? 'text-gray-700' : 'text-gray-400'
+                    }`}>
+                      Reading {idx + 1}
+                    </label>
+                    {modernInput({
+                      value: val || '', // Always a string or empty
+                      onChange: e => handleRepeatabilityChange(idx, e.target.value),
+                      type: 'number',
+                      placeholder: `R${idx + 1}`,
+                      className: `w-24 ${!isEnabled ? 'bg-gray-100 cursor-not-allowed' : ''}`,
+                      disabled: !isEnabled,
+                    })}
+                  </div>
+                );
+              })}
             </div>
             {/* Replace the styled mean/stddev display with plain text */}
             <div className="mt-2 text-sm">
@@ -1090,19 +1142,19 @@ const u_rep_all = stddevRepeat;
                     const u_air_row_budget = mpe_g_row_budget / (4 * Math.sqrt(3));
                     const u_drift_row_budget = mpe_g_row_budget / (3 * Math.sqrt(3));
                     const u_conv_row_budget = mpe_g_row_budget / (3 * Math.sqrt(3));
-                    const u_round0_row_budget = d_row_budget / (2 * Math.sqrt(3));
-                    const u_round1_row_budget = d_row_budget / (2 * Math.sqrt(3));
+                    const u_round0_row_budget = d_row_budget / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
+                    const u_round1_row_budget = d_row_budget / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
                     // Calculate per-row Imax for eccentricity (Excel: each row has its own value)
                     let Imax_row_budget = 0;
                     if (idx < 4) {
                       // Use the corresponding corner
                       const ind = parseFloat(eccRows[cornerIndices[idx]]?.indication);
-                      Imax_row_budget = isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(ind - centerIndication);
+                      Imax_row_budget = isNaN(centerIndication) || isNaN(ind) ? 0 : ind - centerIndication;
                     } else {
                       // Use the max of all corners
                       Imax_row_budget = Math.max(...cornerIndices.map(i => {
                         const ind = parseFloat(eccRows[i]?.indication);
-                        return isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(ind - centerIndication);
+                        return isNaN(centerIndication) || isNaN(ind) ? 0 : ind - centerIndication;
                       }));
                     }
                     // Eccentricity set to 0 and excluded from calculations
@@ -1402,8 +1454,8 @@ const u_rep_all = stddevRepeat;
         // Linearity Test Results
         linearity: {
           measurements: linearityResults.map((result, index) => {
-            // Based on certificate format: Load is always 0.000, Error = Indication - Load
-            const load = 0.000; // Always 0.000 as shown in certificate
+            // Use actual test load values calculated from linearityRows
+            const load = testLoadByCol[index] || 0;
             const indication = parseFloat(result.indication) || 0;
             const error = indication - load; // Error = Indication - Load
             const expandedUnc = getExpandedUncertainty(index);
@@ -1426,7 +1478,7 @@ const u_rep_all = stddevRepeat;
           x_axis_label: "Load (g)",
           y_axis_label: "Error (g)",
           data_points: linearityResults.map((result, index) => {
-            const load = 0.000; // Always 0.000 as shown in certificate
+            const load = testLoadByCol[index] || 0;
             const indication = parseFloat(result.indication) || 0;
             const error = indication - load; // Error = Indication - Load
             return {

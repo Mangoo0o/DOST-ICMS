@@ -410,13 +410,13 @@ $pdf->SetFont('Arial', '', 7);
 // Display 10 trials in 2 columns (5 trials each)
 for ($i = 0; $i < 5; $i++) {
     // Left side - trials 1-5
-    $reading = isset($repeatabilityReadings[$i]) && is_numeric($repeatabilityReadings[$i]) ? number_format((float)$repeatabilityReadings[$i], 3) : '0.000';
+    $reading = isset($repeatabilityReadings[$i]) && is_numeric($repeatabilityReadings[$i]) ? number_format((float)$repeatabilityReadings[$i], 0) : '0';
     $pdf->Cell($colWidths[0], 5, ($i + 1), 1, 0, 'C');
     $pdf->Cell($colWidths[1], 5, $reading, 1, 0, 'C');
     
     // Right side - trials 6-10
     $rightIndex = $i + 5;
-    $rightReading = isset($repeatabilityReadings[$rightIndex]) && is_numeric($repeatabilityReadings[$rightIndex]) ? number_format((float)$repeatabilityReadings[$rightIndex], 3) : '0.000';
+    $rightReading = isset($repeatabilityReadings[$rightIndex]) && is_numeric($repeatabilityReadings[$rightIndex]) ? number_format((float)$repeatabilityReadings[$rightIndex], 0) : '0';
     $pdf->Cell($colWidths[0], 5, ($rightIndex + 1), 1, 0, 'C');
     $pdf->Cell($colWidths[1], 5, $rightReading, 1, 1, 'C');
 }
@@ -430,7 +430,7 @@ if (count($repeatabilityReadings) > 1) {
 }
 
 $pdf->SetFont('Arial', 'B', 10); // Increased from 8 to 10 for bigger font
-$pdf->Cell(0, 5, 'Std. Deviation: ' . (is_numeric($stdDev) ? number_format((float)$stdDev, 6) : '0.000000') . ' g', 0, 1, 'C'); // Center aligned without box
+$pdf->Cell(0, 5, 'Std. Deviation: ' . (is_numeric($stdDev) ? number_format((float)$stdDev, 6, '.', '') : '0.000000') . ' g', 0, 1, 'C'); // Center aligned without box
 $pdf->Ln(0.5); // Increased from 0.2 to 0.5
 
 // Eccentricity Table - Compact with diagram
@@ -452,10 +452,19 @@ $pdf->Cell($colWidths[2], 5, "Error (g)", 1, 1, 'C');
 $pdf->SetFont('Arial', '', 7);
 
 $eccRows = $input_data['eccRows'] ?? [];
-$positions = ['Center', 'Front Left', 'Back Left', 'Back Right', 'Front Right', 'Center'];
-for ($i = 0; $i < 6; $i++) {
-    $indication = isset($eccRows[$i]['indication']) && is_numeric($eccRows[$i]['indication']) ? number_format((float)$eccRows[$i]['indication'], 3) : '0.000';
-    $error = isset($eccRows[$i]['error']) && is_numeric($eccRows[$i]['error']) ? number_format((float)$eccRows[$i]['error'], 3) : '0.000';
+$positions = ['Center', 'Bottom Left', 'Top Left', 'Top Right', 'Bottom Right'];
+for ($i = 0; $i < 5; $i++) {
+    $indication = isset($eccRows[$i]['indication']) && is_numeric($eccRows[$i]['indication']) ? number_format((float)$eccRows[$i]['indication'], 0, '.', '') : '0';
+    
+    // Get error from result data if available, otherwise from input data
+    $error = 0.000;
+    if (isset($result_data['measurement_results']['eccentricity']['measurements'][$i]['error_g'])) {
+        $error = $result_data['measurement_results']['eccentricity']['measurements'][$i]['error_g'];
+    } elseif (isset($eccRows[$i]['error'])) {
+        $error = $eccRows[$i]['error'];
+    }
+    $error = is_numeric($error) ? number_format((float)$error, 3, '.', '') : '0.000';
+    
     $pdf->SetXY($tableX, $pdf->GetY());
     $pdf->Cell($colWidths[0], 5, $positions[$i], 1, 0, 'C'); // Reduced height from 6 to 5
     $pdf->Cell($colWidths[1], 5, $indication, 1, 0, 'C'); // Reduced height from 6 to 5
@@ -545,10 +554,10 @@ $radius = $circleSize/2 - 4; // Further adjusted for smaller diagram
 
 // Get eccentricity data from database
 $eccRows = $input_data['eccRows'] ?? [];
-$positions = ['Center', 'Front Left', 'Back Left', 'Back Right', 'Front Right', 'Center'];
+$positions = ['Center', 'Bottom Left', 'Top Left', 'Top Right', 'Bottom Right'];
 
 // Draw positions based on actual data
-for ($i = 0; $i < 5; $i++) { // Only draw first 5 positions (skip duplicate Center)
+for ($i = 0; $i < 5; $i++) { // Draw all 5 positions
     $positionName = $positions[$i];
     $hasData = isset($eccRows[$i]) && isset($eccRows[$i]['indication']);
     
@@ -556,8 +565,11 @@ for ($i = 0; $i < 5; $i++) { // Only draw first 5 positions (skip duplicate Cent
     if ($i == 0) { // Center
         $posX = $centerX;
         $posY = $centerY;
-    } else { // Corner positions
-        $angle = ($i - 1) * 90; // 0, 90, 180, 270 degrees
+    } else { // Corner positions - match the diagram layout exactly
+        // Position 2: Bottom Left (225°), Position 3: Top Left (135°), 
+        // Position 4: Top Right (45°), Position 5: Bottom Right (315°)
+        $angles = [0, 225, 135, 45, 315]; // Center, Bottom Left, Top Left, Top Right, Bottom Right
+        $angle = $angles[$i];
         $posX = $centerX + $radius * 0.7 * cos(deg2rad($angle));
         $posY = $centerY + $radius * 0.7 * sin(deg2rad($angle));
     }
@@ -617,15 +629,32 @@ $pdf->SetFont('Arial', '', 7); // Increased from 6 to 7
 
 $linearityResults = $input_data['linearityResults'] ?? [];
 for ($i = 0; $i < 6; $i++) {
-    $load = isset($linearityResults[$i]['load']) && is_numeric($linearityResults[$i]['load']) ? number_format((float)$linearityResults[$i]['load'], 3) : '0.000'; // Reduced decimal places
-    $indication = isset($linearityResults[$i]['indication']) && is_numeric($linearityResults[$i]['indication']) ? number_format((float)$linearityResults[$i]['indication'], 3) : '0.000';
-    $error = isset($linearityResults[$i]['error']) && is_numeric($linearityResults[$i]['error']) ? number_format((float)$linearityResults[$i]['error'], 3) : '0.000';
-    $uncertainty = isset($result_data['U_expanded']) && is_numeric($result_data['U_expanded']) ? number_format((float)$result_data['U_expanded'], 4) : '0.0000'; // Reduced decimal places
-    $pdf->Cell($colWidths[0], 5, ($i + 1), 1, 0, 'C'); // Reduced height from 6 to 5
-    $pdf->Cell($colWidths[1], 5, $load, 1, 0, 'C'); // Reduced height from 6 to 5
-    $pdf->Cell($colWidths[2], 5, $indication, 1, 0, 'C'); // Reduced height from 6 to 5
-    $pdf->Cell($colWidths[3], 5, $error, 1, 0, 'C'); // Reduced height from 6 to 5
-    $pdf->Cell($colWidths[4], 5, $uncertainty, 1, 1, 'C'); // Reduced height from 6 to 5
+    // Get load from the result data if available, otherwise from input data
+    $load = 0.000;
+    if (isset($result_data['measurement_results']['linearity']['measurements'][$i]['load_g'])) {
+        $load = $result_data['measurement_results']['linearity']['measurements'][$i]['load_g'];
+    } elseif (isset($input_data['linearityResults'][$i]['load'])) {
+        $load = $input_data['linearityResults'][$i]['load'];
+    }
+    
+    $load = is_numeric($load) ? number_format((float)$load, 4, '.', '') : '0.0000';
+    $indication = isset($linearityResults[$i]['indication']) && is_numeric($linearityResults[$i]['indication']) ? number_format((float)$linearityResults[$i]['indication'], 0, '.', '') : '0';
+    
+    // Get error from result data if available, otherwise calculate it
+    $error = 0.000;
+    if (isset($result_data['measurement_results']['linearity']['measurements'][$i]['error_g'])) {
+        $error = $result_data['measurement_results']['linearity']['measurements'][$i]['error_g'];
+    } elseif (isset($linearityResults[$i]['error'])) {
+        $error = $linearityResults[$i]['error'];
+    }
+    $error = is_numeric($error) ? number_format((float)$error, 3, '.', '') : '0.000';
+    
+    $uncertainty = isset($result_data['U_expanded']) && is_numeric($result_data['U_expanded']) ? number_format((float)$result_data['U_expanded'], 4, '.', '') : '0.0000';
+    $pdf->Cell($colWidths[0], 5, ($i + 1), 1, 0, 'C');
+    $pdf->Cell($colWidths[1], 5, $load, 1, 0, 'C');
+    $pdf->Cell($colWidths[2], 5, $indication, 1, 0, 'C');
+    $pdf->Cell($colWidths[3], 5, $error, 1, 0, 'C');
+    $pdf->Cell($colWidths[4], 5, $uncertainty, 1, 1, 'C');
 }
 $pdf->Ln(0.5); // Further reduced spacing
 
@@ -656,8 +685,8 @@ $pdf->Cell(15, 4, 'Error (g)', 0, 0, 'C');
 // Draw Y-axis labels
 $maxError = 0;
 $minError = 0;
-if (!empty($linearityResults)) {
-    $errors = array_column($linearityResults, 'error');
+if (!empty($result_data['measurement_results']['linearity']['measurements'])) {
+    $errors = array_column($result_data['measurement_results']['linearity']['measurements'], 'error_g');
     $errors = array_filter($errors, function($val) { return $val !== null && $val !== ''; }); // Remove null/empty values
     
     if (!empty($errors)) {
@@ -679,7 +708,7 @@ for ($i = 0; $i <= 5; $i++) {
     $value = $minError + ($errorRange * $i / 5);
     $y = $graphY + $graphHeight - 10 - ($i * ($graphHeight - 20) / 5);
     $pdf->SetXY($graphX + 15, $y - 2);
-    $pdf->Cell(10, 4, is_numeric($value) ? number_format((float)$value, 3) : '0.000', 0, 0, 'R');
+    $pdf->Cell(10, 4, is_numeric($value) ? number_format((float)$value, 3, '.', '') : '0.000', 0, 0, 'R');
     
     // Draw horizontal grid line
     $pdf->SetDrawColor(200, 200, 200);
@@ -690,7 +719,17 @@ for ($i = 0; $i <= 5; $i++) {
 // Draw X-axis labels and data points
 $maxLoad = 0;
 if (!empty($linearityResults)) {
-    $loads = array_column($linearityResults, 'load');
+    // Get loads from result data if available, otherwise from input data
+    $loads = [];
+    for ($i = 0; $i < count($linearityResults); $i++) {
+        $load = 0.000;
+        if (isset($result_data['measurement_results']['linearity']['measurements'][$i]['load_g'])) {
+            $load = $result_data['measurement_results']['linearity']['measurements'][$i]['load_g'];
+        } elseif (isset($linearityResults[$i]['load'])) {
+            $load = $linearityResults[$i]['load'];
+        }
+        $loads[] = $load;
+    }
     $loads = array_filter($loads, function($val) { return $val !== null && $val !== ''; }); // Remove null/empty values
     
     if (!empty($loads)) {
@@ -710,60 +749,27 @@ $pdf->SetDrawColor(0, 0, 255); // Blue for data points and line
 $pdf->SetLineWidth(0.5); // Thicker line for visibility
 
 $points = [];
-for ($i = 0; $i < count($linearityResults); $i++) {
-    if (isset($linearityResults[$i]['load']) && isset($linearityResults[$i]['error'])) {
-        $load = $linearityResults[$i]['load'];
-        $error = $linearityResults[$i]['error'];
-        
+for ($i = 0; $i < count($result_data['measurement_results']['linearity']['measurements']); $i++) {
+    // Get load and error from result data
+    $load = $result_data['measurement_results']['linearity']['measurements'][$i]['load_g'];
+    $error = $result_data['measurement_results']['linearity']['measurements'][$i]['error_g'];
+    
+    if ($load > 0) { // Only plot points with actual load values
+        // Use exact same positioning as X-axis labels for perfect alignment
         $x = $graphX + 20 + ($load * $xScale);
         $y = $graphY + $graphHeight - 10 - (($error - $minError) * $yScale);
         
         $points[] = ['x' => $x, 'y' => $y];
         
-        // Draw data point as small circle
-        for ($angle = 0; $angle < 360; $angle += 10) {
-            $px = $x + 1.5 * cos(deg2rad($angle));
-            $py = $y + 1.5 * sin(deg2rad($angle));
-            $pdf->Rect($px, $py, 0.3, 0.3);
-        }
-    }
-}
-
-// Draw connecting line between data points
-if (count($points) > 1) {
-    for ($i = 0; $i < count($points) - 1; $i++) {
-        $pdf->Line($points[$i]['x'], $points[$i]['y'], $points[$i + 1]['x'], $points[$i + 1]['y']);
-    }
-}
-
-// Draw shaded area under the linearity line
-if (count($points) > 1) {
-    $pdf->SetFillColor(200, 230, 255); // Light blue shading
-    
-    // Draw the shaded area using multiple small rectangles
-    $stepSize = 1; // Smaller steps for smoother shading
-    for ($x = $graphX + 20; $x < $graphX + $graphWidth - 10; $x += $stepSize) {
-        // Find the Y value at this X position
-        $yValue = $graphY + $graphHeight - 10; // Default to bottom
-        
-        // Check which segment this X falls into
-        for ($i = 0; $i < count($points) - 1; $i++) {
-            if ($x >= $points[$i]['x'] && $x <= $points[$i + 1]['x']) {
-                // Linear interpolation
-                if ($points[$i + 1]['x'] != $points[$i]['x']) {
-                    $ratio = ($x - $points[$i]['x']) / ($points[$i + 1]['x'] - $points[$i]['x']);
-                    $yValue = $points[$i]['y'] + $ratio * ($points[$i + 1]['y'] - $points[$i]['y']);
-                } else {
-                    $yValue = $points[$i]['y'];
-                }
-                break;
+        // Draw solid blue circle (no white center) - centered on exact position
+        $pdf->SetFillColor(0, 0, 255); // Blue fill
+        // Draw solid blue circle using multiple overlapping rectangles
+        for ($radius = 0; $radius <= 1.5; $radius += 0.1) {
+            for ($angle = 0; $angle < 360; $angle += 5) {
+                $px = $x + $radius * cos(deg2rad($angle));
+                $py = $y + $radius * sin(deg2rad($angle));
+                $pdf->Rect($px, $py, 0.2, 0.2, 'F');
             }
-        }
-        
-        // Draw small rectangle from bottom to line
-        $height = ($graphY + $graphHeight - 10) - $yValue;
-        if ($height > 0) {
-            $pdf->Rect($x, $yValue, $stepSize, $height, 'F');
         }
     }
 }
@@ -771,18 +777,26 @@ if (count($points) > 1) {
 // Reset line width for other elements
 $pdf->SetLineWidth(0.2);
 
-// Draw X-axis scale
-$pdf->SetFont('Arial', '', 8); // Larger font for X-axis labels
-for ($i = 0; $i <= 5; $i++) {
-    $value = ($maxLoad * $i / 5);
-    $x = $graphX + 20 + ($i * ($graphWidth - 30) / 5);
-    $pdf->SetXY($x - 10, $graphY + $graphHeight - 5);
-    $pdf->Cell(20, 4, is_numeric($value) ? number_format((float)$value, 1) : '0.0', 0, 0, 'C');
-    
-    // Draw vertical grid line
-    $pdf->SetDrawColor(200, 200, 200);
-    $pdf->Line($x, $graphY + 10, $x, $graphY + $graphHeight - 10);
-    $pdf->SetDrawColor(0, 0, 0);
+// Draw X-axis scale with actual Load (g) values - inside the graph area
+// Uses EXACT same positioning as data points for perfect alignment
+$pdf->SetFont('Arial', '', 5); // Smaller font for better readability
+for ($i = 0; $i < count($result_data['measurement_results']['linearity']['measurements']); $i++) {
+    $load = $result_data['measurement_results']['linearity']['measurements'][$i]['load_g'];
+    if ($load > 0) {
+        // Use EXACT same X positioning as data points: $graphX + 20 + ($load * $xScale)
+        $x = $graphX + 20 + ($load * $xScale);
+        $y = $graphY + $graphHeight - 8; // Position inside graph area
+        
+        // Center the text on the data point
+        $textWidth = $pdf->GetStringWidth(number_format((float)$load, 4, '.', ''));
+        $pdf->SetXY($x - ($textWidth / 2), $y);
+        $pdf->Cell(25, 3, number_format((float)$load, 4, '.', ''), 0, 0, 'C');
+        
+        // Draw vertical grid line
+        $pdf->SetDrawColor(200, 200, 200);
+        $pdf->Line($x, $graphY + 10, $x, $graphY + $graphHeight - 10);
+        $pdf->SetDrawColor(0, 0, 0);
+    }
 }
 
 // Reset colors
@@ -820,10 +834,16 @@ $pdf->Ln(3);
 $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(0, 6, 'ENVIRONMENTAL CONDITIONS:', 0, 1, 'L');
 $pdf->SetFont('Arial', '', 10);
-$temp = $input_data['equipment']['tempStart'] ?? '23.0';
-$humidity = $input_data['equipment']['humidityStart'] ?? '45';
+// Calculate average values (AVERAGE formula: =AVERAGE(start, end))
+$tempStart = $input_data['equipment']['tempStart'] ?? '23.0';
+$tempEnd = $input_data['equipment']['tempEnd'] ?? '23.0';
+$temp = ($tempStart + $tempEnd) / 2;
+
+$humidityStart = $input_data['equipment']['humidityStart'] ?? '45';
+$humidityEnd = $input_data['equipment']['humidityEnd'] ?? '45';
+$humidity = ($humidityStart + $humidityEnd) / 2;
 $pdf->Cell(40, 6, 'Ambient Temperature :', 0, 0, 'L');
-$pdf->Cell(20, 6, $temp . ' °C', 0, 1, 'L');
+$pdf->Cell(20, 6, $temp . ' C', 0, 1, 'L');
 $pdf->Cell(40, 6, 'Relative Humidity :', 0, 0, 'L');
 $pdf->Cell(20, 6, $humidity . ' % RH', 0, 1, 'L');
 $pdf->Ln(3);

@@ -235,8 +235,12 @@ const Transaction = () => {
     const currentBalance = getTransactionBalance(selectedTransaction);
     const expectedAmount = Math.max(0, currentBalance - discountPeso);
     
-    // For 100% discount, payment amount should be the full amount, not 0
-    const payment_amount = discountPercent === 100 ? getAddPaymentTotal() : getAddPaymentTotalAfterDiscount();
+    // For 100% discount, payment amount should be 0, not the full amount
+    const isHundredPercentDiscount = 
+      (addPaymentDiscountType === 'custom' && parseFloat(addPaymentDiscountValue) === 100) ||
+      (addPaymentDiscountType !== 'custom' && addPaymentDiscountType !== 'N/A' && parseFloat(addPaymentDiscountType) === 100);
+    
+    const payment_amount = isHundredPercentDiscount ? 0 : getAddPaymentTotalAfterDiscount();
     
     // Validation: Only allow payment if amount matches expected
     if (Math.abs(payment_amount - expectedAmount) > 0.01) {
@@ -576,6 +580,7 @@ const Transaction = () => {
                     <option value="10">10%</option>
                     <option value="15">15%</option>
                     <option value="20">20%</option>
+                    <option value="100">100%</option>
                     <option value="custom">Custom</option>
                   </select>
                   {addPaymentDiscountType === 'custom' && (
@@ -627,7 +632,12 @@ const Transaction = () => {
                 <span className="text-gray-700">Payment</span>
                 <input
                   type="number"
-                  value={getAddPaymentTotalAfterDiscount()}
+                  value={
+                    (addPaymentDiscountType === 'custom' && parseFloat(addPaymentDiscountValue) === 100) ||
+                    (addPaymentDiscountType !== 'custom' && addPaymentDiscountType !== 'N/A' && parseFloat(addPaymentDiscountType) === 100)
+                      ? 0 
+                      : getAddPaymentTotalAfterDiscount()
+                  }
                   className="w-24 px-2 py-1 border border-gray-300 rounded text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-[#2a9dab] bg-gray-100"
                   readOnly
                 />
