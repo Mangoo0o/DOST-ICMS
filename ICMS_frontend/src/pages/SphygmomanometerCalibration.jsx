@@ -106,8 +106,9 @@ function SphygmomanometerCalibration() {
   };
   const iprtMean = iprtRows.map(mean4);
   const uutMean  = uutRows.map(mean4);
-  const deviationMmHg = uutMean.map((u,i)=> (u==='' || iprtMean[i]==='')? '': Number((u - iprtMean[i]).toFixed(6)) );
-  const deviationKPa  = deviationMmHg.map(v => v===''? '': Number((v / KPA_TO_MMHG).toFixed(6)));
+  // Deviation columns should reflect the average UUT values (per user request)
+  const deviationMmHg = uutMean;
+  const deviationKPa  = uutMean.map(v => v===''? '': Number((Number(v) / KPA_TO_MMHG).toFixed(6)));
   // Increasing/Decreasing means for UUT
   const uutIncMean = uutRows.map(r => {
     const vals = [r.X1, r.X3].map(Number).filter(v => !isNaN(v));
@@ -514,21 +515,25 @@ function SphygmomanometerCalibration() {
         return (
           <>
             <CardSection>
-              <h3 className="font-semibold mb-2">Standard Readings (IPRT) and UUT (DKD R-6-1)</h3>
+              <h3 className="font-semibold mb-2">UNIT UNDER TEST READINGS (UUT) — DKD R-6-1</h3>
               <div className="overflow-x-auto">
-                <table className="min-w-[740px] border text-xs mb-3">
+                <table className="min-w-[820px] border text-xs mb-3">
                   <thead>
                     <tr>
-                      <th className="border p-1">APPLIED (mmHg)</th>
-                      <th className="border p-1">X1 up</th>
-                      <th className="border p-1">X2 down</th>
-                      <th className="border p-1">X3 up</th>
-                      <th className="border p-1">X4 down</th>
-                      <th className="border p-1">MEAN IPRT</th>
-                      <th className="border p-1">MEAN UUT</th>
-                      <th className="border p-1">DEVIATION (mmHg)</th>
-                      <th className="border p-1">DEVIATION (kPa)</th>
-                      <th className="border p-1">Max Hyst. Err (mmHg)</th>
+                      <th className="border p-1" rowSpan={2}>APPLIED</th>
+                      <th className="border p-1" rowSpan={2}>X1</th>
+                      <th className="border p-1" rowSpan={2}>X2</th>
+                      <th className="border p-1" rowSpan={2}>X3</th>
+                      <th className="border p-1" rowSpan={2}>X4</th>
+                      <th className="border p-1" colSpan={3}>MEAN</th>
+                      <th className="border p-1" rowSpan={2}>DEVIATION (mmHg)</th>
+                      <th className="border p-1" rowSpan={2}>DEVIATION (kPa)</th>
+                      <th className="border p-1" rowSpan={2}>Max Hyst. Err (mmHg)</th>
+                    </tr>
+                    <tr>
+                      <th className="border p-1">up</th>
+                      <th className="border p-1">down</th>
+                      <th className="border p-1">UUT</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -537,22 +542,17 @@ function SphygmomanometerCalibration() {
                         <td className="border p-1 text-center">
                           <div className="flex flex-col items-center gap-0.5">
                             <span>{p}</span>
-                            <span className="text-[10px] text-gray-500">{mmHgToKPa(p)} kPa</span>
+                            <span className="text-[10px] text-gray-500">PRESSURE ({mmHgToKPa(p)} kPa)</span>
                           </div>
                         </td>
                         {['X1','X2','X3','X4'].map(k => (
-                          <td key={k} className="border p-1">
-                            <ModernInput type="number" inputMode="decimal" value={iprtRows[idx][k] ?? ''} onChange={e=> setIprtCell(idx,k,e.target.value)} />
+                          <td key={k} className="border p-1 bg-green-100">
+                            <ModernInput type="number" inputMode="decimal" value={uutRows[idx][k] ?? ''} onChange={e=> setUutCell(idx,k,e.target.value)} />
                           </td>
                         ))}
-                        <td className="border p-1 text-center bg-gray-50">{iprtMean[idx]!==''? formatDec(iprtMean[idx], 6) : ''}</td>
-                        <td className="border p-1">
-                          <div className="grid grid-cols-4 gap-1">
-                            {['X1','X2','X3','X4'].map(k => (
-                              <ModernInput key={k} type="number" inputMode="decimal" value={uutRows[idx][k] ?? ''} onChange={e=> setUutCell(idx,k,e.target.value)} />
-                            ))}
-                          </div>
-                        </td>
+                        <td className="border p-1 text-center bg-gray-50">{uutIncMean[idx]!==''? formatDec(uutIncMean[idx], 6) : ''}</td>
+                        <td className="border p-1 text-center bg-gray-50">{uutDecMean[idx]!==''? formatDec(uutDecMean[idx], 6) : ''}</td>
+                        <td className="border p-1 text-center bg-gray-50">{uutMean[idx]!==''? formatDec(uutMean[idx], 6) : ''}</td>
                         <td className="border p-1 text-center bg-gray-50">{deviationMmHg[idx]!==''? formatDec(deviationMmHg[idx], 6) : ''}</td>
                         <td className="border p-1 text-center bg-gray-50">{deviationKPa[idx]!==''? formatDec(deviationKPa[idx], 6) : ''}</td>
                         <td className="border p-1 text-center bg-gray-50">{hysteresisMax[idx]!==''? formatDec(hysteresisMax[idx], 6) : ''}</td>

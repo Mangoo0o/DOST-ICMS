@@ -56,6 +56,7 @@ const Transaction = () => {
   const [addPaymentAmount, setAddPaymentAmount] = useState('');
   const [addPaymentDiscountType, setAddPaymentDiscountType] = useState('N/A'); // Default to None
   const [addPaymentDiscountValue, setAddPaymentDiscountValue] = useState(0); // Default to 0
+  const [addPaymentAttachment, setAddPaymentAttachment] = useState(null); // Required PDF attachment
 
   // Add state for confirmation modals
   const [showConfirmPaymentModal, setShowConfirmPaymentModal] = useState(false);
@@ -125,6 +126,7 @@ const Transaction = () => {
   const handleShowAddPayment = (transaction) => {
     setSelectedTransaction(transaction);
     setAddPaymentAmount('');
+    setAddPaymentAttachment(null);
     const lastPayment = transaction.payments && transaction.payments.length > 0
       ? transaction.payments[transaction.payments.length - 1]
       : null;
@@ -223,6 +225,14 @@ const Transaction = () => {
 
   const handleAddPaymentSubmit = async () => {
     if (!selectedTransaction) return;
+    if (!addPaymentAttachment) {
+      toast.error('Please attach a PDF document before confirming payment.');
+      return;
+    }
+    if (addPaymentAttachment && addPaymentAttachment.type !== 'application/pdf') {
+      toast.error('Only PDF attachments are allowed.');
+      return;
+    }
     const refNo = selectedTransaction.reservation_ref_no;
     const discountPercent = addPaymentDiscountType === 'custom'
       ? parseFloat(addPaymentDiscountValue) || 0
@@ -235,15 +245,12 @@ const Transaction = () => {
     const currentBalance = getTransactionBalance(selectedTransaction);
     const expectedAmount = Math.max(0, currentBalance - discountPeso);
     
-    // For 100% discount, payment amount should be 0, not the full amount
-    const isHundredPercentDiscount = 
-      (addPaymentDiscountType === 'custom' && parseFloat(addPaymentDiscountValue) === 100) ||
-      (addPaymentDiscountType !== 'custom' && addPaymentDiscountType !== 'N/A' && parseFloat(addPaymentDiscountType) === 100);
-    
-    const payment_amount = isHundredPercentDiscount ? 0 : getAddPaymentTotalAfterDiscount();
+    // For 100% discount, payment amount should be the full amount, not 0
+    const payment_amount = discountPercent === 100 ? getAddPaymentTotal() : getAddPaymentTotalAfterDiscount();
     
     // Validation: Only allow payment if amount matches expected
-    if (Math.abs(payment_amount - expectedAmount) > 0.01) {
+    // Special case: for 100% discount we intentionally send full amount as payment (server applies discount)
+    if (discountPercent !== 100 && Math.abs(payment_amount - expectedAmount) > 0.01) {
       toast.error(`Payment amount must be exactly ₱${expectedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
       return;
     }
@@ -566,60 +573,33 @@ const Transaction = () => {
                 <span className="text-gray-700">Subtotal</span>
                 <span className="font-mono text-gray-800">₱{getAddPaymentTotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-gray-700">Discount</span>
-                <span className="flex items-center gap-2">
-                  <select
-                    value={addPaymentDiscountType}
-                    onChange={e => setAddPaymentDiscountType(e.target.value)}
-                    className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#2a9dab]"
-                    style={{ minWidth: '70px' }}
-                  >
-                    <option value="N/A">None</option>
-                    <option value="5">5%</option>
-                    <option value="10">10%</option>
-                    <option value="15">15%</option>
-                    <option value="20">20%</option>
-                    <option value="100">100%</option>
-                    <option value="custom">Custom</option>
-                  </select>
-                  {addPaymentDiscountType === 'custom' && (
-                    <input
-                      type="number"
-                      value={addPaymentDiscountValue}
-                      onChange={e => {
-                        let val = e.target.value.replace(/[^\d.]/g, ""); // Remove non-numeric
-                        if (val === "") {
-                          setAddPaymentDiscountValue("");
-                        } else {
-                          val = Math.max(0, Math.min(100, Number(val)));
-                          setAddPaymentDiscountValue(val);
-                        }
-                      }}
-                      className="w-14 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#2a9dab]"
-                      placeholder="%"
-                      min="0"
-                      max="100"
-                    />
-                  )}
-                  <span className="text-red-600 font-mono">-₱{getAddPaymentDiscountAmount().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </span>
-                {/* Modern styled file input for automatic 100% discount */}
-                <label htmlFor="attach-file" className="ml-4 inline-flex items-center px-4 py-2 bg-[#2a9dab] text-white rounded-lg cursor-pointer hover:bg-[#1f8a96] transition-colors shadow-md">
+              <div className="flex justify-end items-center mb-1">
+                <span className="text-red-600 font-mono">-₱{getAddPaymentDiscountAmount().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              {/* Modern styled file input for automatic 100% discount */}
+              <div className="flex justify-end mb-1">
+                <label htmlFor="attach-file" className="inline-flex items-center px-4 py-2 bg-[#2a9dab] text-white rounded-lg cursor-pointer hover:bg-[#1f8a96] transition-colors shadow-md">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l7.586-7.586a4 4 0 10-5.656-5.656l-7.586 7.586a6 6 0 108.486 8.486" />
                   </svg>
-                  Attach File or Picture
+                  {addPaymentAttachment ? addPaymentAttachment.name : 'Attach PDF'}
                   <input
                     id="attach-file"
                     type="file"
-                    accept="image/*,application/pdf"
+                    accept="application/pdf"
                     className="hidden"
                     onChange={e => {
-                      if (e.target.files && e.target.files.length > 0) {
-                        setAddPaymentDiscountType('custom');
-                        setAddPaymentDiscountValue(100);
+                      const file = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+                      if (!file) { setAddPaymentAttachment(null); return; }
+                      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                        toast.error('Please attach a valid PDF file.');
+                        e.target.value = '';
+                        setAddPaymentAttachment(null);
+                        return;
                       }
+                      setAddPaymentAttachment(file);
+                      setAddPaymentDiscountType('custom');
+                      setAddPaymentDiscountValue(100);
                     }}
                   />
                 </label>
@@ -632,12 +612,7 @@ const Transaction = () => {
                 <span className="text-gray-700">Payment</span>
                 <input
                   type="number"
-                  value={
-                    (addPaymentDiscountType === 'custom' && parseFloat(addPaymentDiscountValue) === 100) ||
-                    (addPaymentDiscountType !== 'custom' && addPaymentDiscountType !== 'N/A' && parseFloat(addPaymentDiscountType) === 100)
-                      ? 0 
-                      : getAddPaymentTotalAfterDiscount()
-                  }
+                  value={getAddPaymentTotalAfterDiscount()}
                   className="w-24 px-2 py-1 border border-gray-300 rounded text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-[#2a9dab] bg-gray-100"
                   readOnly
                 />
@@ -653,10 +628,15 @@ const Transaction = () => {
               </button>
               <button
                 onClick={() => {
+                  if (!addPaymentAttachment) {
+                    toast.error('Please attach a PDF document before confirming payment.');
+                    return;
+                  }
                   setShowConfirmPaymentModal(true);
                   setShowAddPaymentModal(false);
                 }}
-                className="px-8 py-2 bg-[#2a9dab] text-white rounded-lg hover:bg-[#1f8a96] text-base font-bold shadow-md transition-colors"
+                disabled={!addPaymentAttachment}
+                className={`px-8 py-2 rounded-lg text-base font-bold shadow-md transition-colors ${addPaymentAttachment ? 'bg-[#2a9dab] text-white hover:bg-[#1f8a96]' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
                 style={{ minWidth: '170px' }}
               >
                 Confirm Payment

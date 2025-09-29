@@ -49,8 +49,7 @@ try {
             CONCAT(c.first_name, ' ', c.last_name) as client_name,
             c.email as client_email,
             c.contact_number as client_contact,
-            c.company as client_company,
-            CONCAT(c.barangay, ', ', c.city, ', ', c.province) as client_address
+            c.company as client_company
         FROM 
             requests r
         LEFT JOIN 

@@ -253,154 +253,24 @@ $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(0, 6, 'MEASUREMENT RESULTS:', 0, 1, 'L');
 $pdf->Ln(2);
 
-// Get data from calibration record - improved data fetching with fallbacks
-$nominal_value = null;
+// Get data from calibration record
+$nominal_value = $input_data['preparation']['testWeightNomval'] ?? null;
 $identification = $serial_no ?: 'DS-2025-001';
-$conventional_mass = null;
-$uncertainty = null;
-$mpe = null;
-
-// Try multiple possible data paths for nominal value
-if (isset($input_data['preparation']['testWeightNominal']) && !empty($input_data['preparation']['testWeightNominal'])) {
-    $nominal_value = $input_data['preparation']['testWeightNominal'];
-} elseif (isset($input_data['preparation']['testWeightNomval']) && !empty($input_data['preparation']['testWeightNomval'])) {
-    $nominal_value = $input_data['preparation']['testWeightNomval'];
-} elseif (isset($input_data['preparation']['nominal']) && !empty($input_data['preparation']['nominal'])) {
-    $nominal_value = $input_data['preparation']['nominal'];
-} else {
-    // Fallback: try to extract from sample range or use default
-    $nominal_value = !empty($range) ? $range : '20';
+$conventional_mass = $result_data['meanDmci'] ?? null;
+// Prefer mg value if present; otherwise convert grams to mg for display
+$uncertainty_mg = null;
+if (isset($result_data['u_mc_t_mg']) && is_numeric($result_data['u_mc_t_mg'])) {
+    $uncertainty_mg = (float)$result_data['u_mc_t_mg'];
+} elseif (isset($result_data['u_mc_t']) && is_numeric($result_data['u_mc_t'])) {
+    $uncertainty_mg = ((float)$result_data['u_mc_t']) * 1000.0;
 }
-
-// Calculate conventional mass using formula: NOMINAL VALUE + Correction (mc_t - m)
-$conventional_mass = null;
-$correction = 0;
-
-// Get nominal value as base
-$nominal_base = is_numeric($nominal_value) ? floatval($nominal_value) : 20.0;
-
-// Try to get correction value (mc_t - m)
-if (isset($result_data['meanDmci']) && $result_data['meanDmci'] != 0) {
-    // If meanDmci is available, use it as the correction
-    $correction = $result_data['meanDmci'];
-    $conventional_mass = $nominal_base + $correction;
-} elseif (isset($result_data['mc_t']) && isset($result_data['m']) && $result_data['mc_t'] != 0) {
-    // Use mc_t - m formula
-    $correction = $result_data['mc_t'] - $result_data['m'];
-    $conventional_mass = $nominal_base + $correction;
-} elseif (isset($result_data['mc_t']) && $result_data['mc_t'] != 0) {
-    // If only mc_t is available, use it as correction
-    $correction = $result_data['mc_t'];
-    $conventional_mass = $nominal_base + $correction;
-} elseif (isset($result_data['conventional_mass']) && $result_data['conventional_mass'] != 0) {
-    // Fallback: use existing conventional mass
-    $conventional_mass = $result_data['conventional_mass'];
-    $correction = $conventional_mass - $nominal_base;
-} else {
-    // Final fallback: use nominal value as conventional mass (no correction)
-    $conventional_mass = $nominal_base;
-    $correction = 0;
-}
-
-// Try multiple possible data paths for uncertainty
-if (isset($result_data['u_mc_t']) && $result_data['u_mc_t'] != 0) {
-    $uncertainty = $result_data['u_mc_t'];
-} elseif (isset($result_data['U_mc_t']) && $result_data['U_mc_t'] != 0) {
-    $uncertainty = $result_data['U_mc_t'];
-} elseif (isset($result_data['uncertainty']) && $result_data['uncertainty'] != 0) {
-    $uncertainty = $result_data['uncertainty'];
-} else {
-    // Fallback: calculate based on nominal value (typical uncertainty for test weights)
-    $uncertainty = is_numeric($nominal_value) ? floatval($nominal_value) * 0.0001 : 0.002;
-}
-
-// Try multiple possible data paths for MPE - prioritize Test Weight MPE from form
-if (isset($input_data['preparation']['testWeightMPE']) && !empty($input_data['preparation']['testWeightMPE'])) {
-    // Primary: Use Test Weight MPE from the calibration form
-    $mpe = $input_data['preparation']['testWeightMPE'];
-} elseif (isset($input_data['mpe']) && !empty($input_data['mpe'])) {
-    // Secondary: Use general MPE field
-    $mpe = $input_data['mpe'];
-} elseif (isset($input_data['mpeOIML']) && !empty($input_data['mpeOIML'])) {
-    // Tertiary: Use OIML MPE field
-    $mpe = $input_data['mpeOIML'];
-} elseif (isset($input_data['preparation']['testWeightNomval']) && !empty($input_data['preparation']['testWeightNomval'])) {
-    // Quaternary: Use test weight nominal value
-    $mpe = $input_data['preparation']['testWeightNomval'];
-} else {
-    // Fallback: calculate MPE based on nominal value (OIML Class M1)
-    $mpe = is_numeric($nominal_value) ? floatval($nominal_value) * 0.0001 : 0.002;
-}
-
-// Debug: Log the fetched data
-error_log("Test Weights Certificate Debug:");
-error_log("Nominal Value: " . ($nominal_value ?? 'null'));
-error_log("Nominal Base: " . $nominal_base);
-error_log("Correction: " . $correction);
-error_log("Conventional Mass: " . ($conventional_mass ?? 'null'));
-error_log("Uncertainty: " . ($uncertainty ?? 'null'));
-error_log("MPE Source: " . (isset($input_data['preparation']['testWeightMPE']) ? 'testWeightMPE from form' : 'calculated/fallback'));
-error_log("MPE Value: " . ($mpe ?? 'null'));
-error_log("Input Data Keys: " . implode(', ', array_keys($input_data ?? [])));
-error_log("Result Data Keys: " . implode(', ', array_keys($result_data ?? [])));
-
-// Calculate Environmental Conditions using AVERAGE(Start:End) formula
-$ambient_temperature = '23.0';
-$relative_humidity = '50.0';
-
-if (isset($input_data['preparation'])) {
-    $prep = $input_data['preparation'];
-    
-    // Calculate average temperature
-    $temp_values = [];
-    if (isset($prep['temp']) && is_numeric($prep['temp']) && $prep['temp'] > 0) {
-        $temp_values[] = floatval($prep['temp']);
-    }
-    if (isset($prep['tempEnd']) && is_numeric($prep['tempEnd']) && $prep['tempEnd'] > 0) {
-        $temp_values[] = floatval($prep['tempEnd']);
-    }
-    
-    if (!empty($temp_values)) {
-        // Filter out unrealistic temperatures (< 15C or > 40C) and calculate average
-        $valid_temps = array_filter($temp_values, function($temp) {
-            return $temp >= 15 && $temp <= 40;
-        });
-        
-        if (!empty($valid_temps)) {
-            $ambient_temperature = number_format(array_sum($valid_temps) / count($valid_temps), 1);
-        }
-    }
-    
-    // Calculate average humidity
-    $humidity_values = [];
-    if (isset($prep['humidity']) && is_numeric($prep['humidity']) && $prep['humidity'] > 0) {
-        $humidity_values[] = floatval($prep['humidity']);
-    }
-    if (isset($prep['humidityEnd']) && is_numeric($prep['humidityEnd']) && $prep['humidityEnd'] > 0) {
-        $humidity_values[] = floatval($prep['humidityEnd']);
-    }
-    
-    if (!empty($humidity_values)) {
-        // Filter out unrealistic humidity (< 10% or > 90%) and calculate average
-        $valid_humidity = array_filter($humidity_values, function($humidity) {
-            return $humidity >= 10 && $humidity <= 90;
-        });
-        
-        if (!empty($valid_humidity)) {
-            $relative_humidity = number_format(array_sum($valid_humidity) / count($valid_humidity), 1);
-        }
-    }
-}
-
-error_log("Environmental Conditions:");
-error_log("Ambient Temperature: " . $ambient_temperature . " C");
-error_log("Relative Humidity: " . $relative_humidity . " % RH");
+$mpe = $input_data['mpe'] ?? null;
 
 // Format the values to match the image format
 $nominal_display = is_numeric($nominal_value) ? number_format($nominal_value, 0) . ' g' : '20 g';
 $conventional_display = is_numeric($conventional_mass) ? number_format($conventional_mass, 0) . ' g + ' . number_format(($conventional_mass - floor($conventional_mass)) * 1000, 2) . ' mg' : '0 g + 0.00 mg';
-$uncertainty_display = is_numeric($uncertainty) ? number_format($uncertainty, 2) : '0.00';
-$mpe_display = is_numeric($mpe) ? (string)$mpe : '2.50';
+$uncertainty_display = is_numeric($uncertainty_mg) ? number_format($uncertainty_mg, 2) : '0.00';
+$mpe_display = is_numeric($mpe) ? number_format($mpe, 2) : '2.50';
 
 // Column widths - reduced uncertainty and MPE columns to make room for other tables
 $col_w = [20, 20, 25, 40, 60]; // Total 165mm - more compact for better fit
@@ -411,7 +281,7 @@ $header_texts = [
     'IDENTIFICATION',
     'CONVENTIONAL MASS',
     "UNCERTAINTY\nOF\nMEASUREMENT\n(k=2), mg",
-    "MAXIMUM\nPERMISSIBLE ERROR\nfor OIML Class\n+/- in mg"
+    "MAXIMUM\nPERMISSIBLE ERROR\nfor OIML Class\n±δ in mg"
 ];
 
 // Store initial position for the header row
@@ -432,7 +302,7 @@ $requiredHeight = $maxLines * $lineHeight;
 for ($i = 0; $i < count($header_texts); $i++) {
     $pdf->SetXY($currentX, $startY);
     // Use MultiCell for all headers to ensure consistent height
-    $pdf->MultiCell($col_w[$i], $lineHeight, $header_texts[$i], 0, 'C', false);
+    $pdf->MultiCell($col_w[$i], $lineHeight, $header_texts[$i], 0, 'C', true);
     $currentHeaderHeight = $pdf->GetY() - $startY;
     if ($currentHeaderHeight > $maxHeaderHeight) {
         $maxHeaderHeight = $currentHeaderHeight;
@@ -517,11 +387,11 @@ $pdf->Ln(12); // Add gap between STANDARDS USED AND TRACEABILITY and EQUIPMENT U
 // Equipment table headers - aligned with MEASUREMENT RESULTS table (total 165mm)
 $pdf->SetFont('Arial', 'B', 8); // Reduced font size for headers
 $pdf->SetFillColor(243,243,243);
-$pdf->Cell(40, 8, 'NAME OF STANDARD', 0, 0, 'C', false);
-$pdf->Cell(40, 8, 'MAKE/MODEL', 0, 0, 'C', false);
-$pdf->Cell(25, 8, 'SERIAL NO.', 0, 0, 'C', false);
-$pdf->Cell(35, 8, 'MAXIMUM CAPACITY', 0, 0, 'C', false);
-$pdf->Cell(25, 8, 'READABILITY', 0, 1, 'C', false);
+$pdf->Cell(40, 8, 'NAME OF STANDARD', 0, 0, 'C', true);
+$pdf->Cell(40, 8, 'MAKE/MODEL', 0, 0, 'C', true);
+$pdf->Cell(25, 8, 'SERIAL NO.', 0, 0, 'C', true);
+$pdf->Cell(35, 8, 'MAXIMUM CAPACITY', 0, 0, 'C', true);
+$pdf->Cell(25, 8, 'READABILITY', 0, 1, 'C', true);
 
 // Equipment table data - aligned with MEASUREMENT RESULTS table
 $pdf->SetFont('Arial', '', 10);
@@ -605,9 +475,9 @@ $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(0, 6, 'ENVIRONMENTAL CONDITIONS:', 0, 1, 'L');
 $pdf->SetFont('Arial', '', 10);
 $pdf->Cell(40, 6, 'Ambient Temperature :', 0, 0, 'L');
-$pdf->Cell(20, 6, $ambient_temperature . ' C', 0, 1, 'L');
+$pdf->Cell(20, 6, '23.0 °C', 0, 1, 'L');
 $pdf->Cell(40, 6, 'Relative Humidity :', 0, 0, 'L');
-$pdf->Cell(20, 6, $relative_humidity . ' % RH', 0, 1, 'L');
+$pdf->Cell(20, 6, '50.0 % RH', 0, 1, 'L');
 $pdf->Ln(3);
 
 $pdf->SetFont('Arial', 'B', 10);

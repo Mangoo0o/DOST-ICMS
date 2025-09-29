@@ -29,6 +29,7 @@ import { FiBox } from 'react-icons/fi';
 import { MdScience } from 'react-icons/md';
 import { apiService } from '../services/api';
 import { toast } from 'react-hot-toast';
+import { RiLockPasswordLine } from 'react-icons/ri';
 
 // InventoryTabContext for global tab selection
 export const InventoryTabContext = createContext({ selectedTab: 'test-weight', setSelectedTab: () => {} });
@@ -92,6 +93,11 @@ const Sidebar = () => {
   const [backupLogs, setBackupLogs] = useState(null);
   const [systemLogs, setSystemLogs] = useState(null);
   const [logsFilter, setLogsFilter] = useState('');
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     const fetchPending = async () => {
@@ -422,6 +428,51 @@ const Sidebar = () => {
     }
   }, [showSettingsModal, user?.role, backupLogs, systemLogs]);
 
+  const validatePasswordInputs = () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error('Please fill out all password fields');
+      return false;
+    }
+    if (newPassword.length < 8) {
+      toast.error('New password must be at least 8 characters');
+      return false;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('New password and confirmation do not match');
+      return false;
+    }
+    if (newPassword === currentPassword) {
+      toast.error('New password must be different from current password');
+      return false;
+    }
+    return true;
+  };
+
+  const handleChangePassword = async () => {
+    if (!validatePasswordInputs()) return;
+    setChangingPassword(true);
+    try {
+      const resp = await apiService.changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      });
+      if (resp.data?.success) {
+        toast.success('Password updated successfully');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        toast.error(resp.data?.message || 'Failed to change password');
+      }
+    } catch (e) {
+      const msg = e.response?.data?.message || e.message || 'Failed to change password';
+      toast.error(msg);
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   const getNavLinks = () => {
     switch (user?.role) {
       case 'admin':
@@ -725,6 +776,27 @@ const Sidebar = () => {
                   </button>
                 </div>
               </div>
+
+              {/* Change Password Card -> opens dedicated modal */}
+              <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 p-8 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#2a9dab]/15 to-[#2a9dab]/30 dark:from-[#2a9dab]/20 dark:to-[#2a9dab]/10 flex items-center justify-center shadow-md">
+                    <RiLockPasswordLine className="w-5 h-5 text-[#2a9dab] dark:text-[#2a9dab]" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Change Password</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Update your account password to keep your data secure.</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowChangePasswordModal(true)}
+                  className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-[#2a9dab] to-[#217a8c] text-white rounded-2xl hover:from-[#217a8c] hover:to-[#1b6671] transition-all duration-300 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                >
+                  <RiLockPasswordLine className="w-5 h-5" />
+                  Change Password
+                </button>
+              </div>
             </div>
 
             {/* Right Column merged into single column */}
@@ -980,6 +1052,69 @@ const Sidebar = () => {
               </div>
             </div>
           )}
+        </div>
+      </Modal>
+
+      {/* Change Password Modal */}
+      <Modal
+        isOpen={showChangePasswordModal}
+        onClose={() => setShowChangePasswordModal(false)}
+        title="Change Password"
+        className="w-full max-w-lg mx-auto"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Password</label>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="w-full px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-transparent shadow-md"
+              placeholder="Enter current password"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">New Password</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-transparent shadow-md"
+              placeholder="At least 8 characters"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm New Password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-transparent shadow-md"
+              placeholder="Re-enter new password"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              onClick={() => setShowChangePasswordModal(false)}
+              className="px-5 py-3 rounded-2xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                const ok = validatePasswordInputs();
+                if (!ok) return;
+                await handleChangePassword();
+                // If success, close modal
+                // We check by ensuring fields reset and no error toast fired
+                setShowChangePasswordModal(false);
+              }}
+              disabled={changingPassword}
+              className="px-6 py-3 bg-gradient-to-r from-[#2a9dab] to-[#217a8c] text-white rounded-2xl hover:from-[#217a8c] hover:to-[#1b6671] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+            >
+              {changingPassword ? 'Updating...' : 'Update Password'}
+            </button>
+          </div>
         </div>
       </Modal>
 

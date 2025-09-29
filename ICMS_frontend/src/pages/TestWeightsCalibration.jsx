@@ -202,17 +202,13 @@ function TestWeightsCalibration() {
     testWeight: '',
     testWeightClass: '',
     testWeightNominal: '',
-    testWeightMPE: '',
     referenceWeight: '',
     referenceWeightClass: '',
     referenceWeightNominal: '',
-    referenceWeightMPE: '',
     referenceWeightDensity: '',
     testWeightDensity: '',
     temp: '',
     humidity: '',
-    tempEnd: '',
-    humidityEnd: '',
     pressure: '',
     airDensity: '',
   });
@@ -220,37 +216,9 @@ function TestWeightsCalibration() {
 
   // Add state for selected reference entry
   const [selectedReference, setSelectedReference] = useState(null);
-  
-  // Add state for inventory test weights
-  const [inventoryTestWeights, setInventoryTestWeights] = useState([]);
-  const [inventoryLoaded, setInventoryLoaded] = useState(false);
 
-  // Helper: get unique reference options for dropdown from inventory
-  const referenceOptions = inventoryTestWeights.map(weight => 
-    `${weight.sticker || weight.name} | ${weight.serial_no || 'N/A'} | ${weight.nomval || 'N/A'}g`
-  );
-
-  // Fetch inventory test weights for reference selection
-  useEffect(() => {
-    const fetchInventoryTestWeights = async () => {
-      try {
-        const response = await apiService.getInventory();
-        if (response.data && Array.isArray(response.data.records)) {
-          // Filter for test weights only
-          const testWeights = response.data.records.filter(item => 
-            item.category === 'Test-Weight' || item.category === 'Calibration Weight'
-          );
-          setInventoryTestWeights(testWeights);
-          setInventoryLoaded(true);
-        }
-      } catch (error) {
-        console.error('Error fetching inventory test weights:', error);
-        setInventoryLoaded(true);
-      }
-    };
-    
-    fetchInventoryTestWeights();
-  }, []);
+  // Helper: get unique reference options for dropdown
+  const referenceOptions = Array.from(new Set(conventionalMassReference.map(ref => `${ref.iden} | ${ref.serial} | ${ref.nominal}`)));
 
   useEffect(() => {
     if (passedEquipmentId) {
@@ -330,31 +298,6 @@ function TestWeightsCalibration() {
   const handlePreparationChange = (e) => {
     const { name, value } = e.target;
     setPreparation({ ...preparation, [name]: value });
-  };
-
-  // Handle reference weight selection from inventory
-  const handleReferenceWeightChange = (e) => {
-    const { name, value } = e.target;
-    setPreparation({ ...preparation, [name]: value });
-    
-    // Find the selected reference weight from inventory
-    const selectedWeight = inventoryTestWeights.find(weight => {
-      return weight.sticker === value || weight.name === value;
-    });
-    
-    if (selectedWeight) {
-      setSelectedReference(selectedWeight);
-      // Auto-fill the reference weight details
-      setPreparation(prev => ({
-        ...prev,
-        [name]: value,
-        referenceWeightNominal: selectedWeight.nomval || '',
-        referenceWeightClass: selectedWeight.class || '',
-        referenceWeightMPE: selectedWeight.maximumPermissibleError ? parseFloat(selectedWeight.maximumPermissibleError).toFixed(2) : '',
-      }));
-    } else {
-      setSelectedReference(null);
-    }
   };
 
   // Step 2: ABBA Weighing
@@ -479,6 +422,7 @@ function TestWeightsCalibration() {
       mc_t,
       u_mc_t,
       U_mc_t,
+      u_mc_t_mg: Number((U_mc_t * 1000).toFixed(2)),
       correction,
       passesMPE,
       mpe, // user-editable
@@ -492,7 +436,7 @@ function TestWeightsCalibration() {
         calibration_type: 'Test Weights',
         input_data: inputData,
         result_data: resultData,
-        calibrated_by: user?.id || user?.client_id || null,
+        calibrated_by: user?.id || null,
         date_started: new Date().toISOString(),
         date_completed: null // Don't mark as completed for auto-save
       });
@@ -517,7 +461,7 @@ function TestWeightsCalibration() {
     
     console.log('TestWeightsCalibration - handleSaveCalibration called');
     console.log('User data:', user);
-    console.log('User ID:', user?.id || user?.client_id);
+    console.log('User ID:', user?.id);
     console.log('Sample ID:', sampleId);
     
     const inputData = {
@@ -540,6 +484,7 @@ function TestWeightsCalibration() {
       mc_t,
       u_mc_t,
       U_mc_t,
+      u_mc_t_mg: Number((U_mc_t * 1000).toFixed(2)),
       correction,
       passesMPE,
       mpe, // user-editable
@@ -864,13 +809,9 @@ function TestWeightsCalibration() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Test Weight MPE (mg):</label>
-                    {modernInput({
-                      name: 'testWeightMPE',
-                      value: preparation.testWeightMPE,
-                      onChange: handlePreparationChange,
-                      type: 'number',
-                      placeholder: 'Enter MPE value',
-                    })}
+                    <div className="font-mono bg-gray-100 rounded p-2">
+                      {formatMPE(preparation.testWeightNomval)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -884,9 +825,9 @@ function TestWeightsCalibration() {
                       list="reference-options"
                       name="referenceWeight"
                       value={preparation.referenceWeight}
-                      onChange={handleReferenceWeightChange}
+                      onChange={handlePreparationChange}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition text-sm bg-white shadow-sm"
-                      placeholder="Select from inventory test weights..."
+                      placeholder="e.g. MTR LU 01, serial, or nominal"
                     />
                     <datalist id="reference-options">
                       {referenceOptions.map(opt => (
@@ -915,18 +856,14 @@ function TestWeightsCalibration() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Reference Weight MPE (mg):</label>
-                    {modernInput({
-                      name: 'referenceWeightMPE',
-                      value: preparation.referenceWeightMPE || (selectedReference?.maximumPermissibleError ? parseFloat(selectedReference.maximumPermissibleError).toFixed(2) : ''),
-                      onChange: handlePreparationChange,
-                      type: 'number',
-                      placeholder: 'Enter MPE value',
-                    })}
+                    <div className="font-mono bg-gray-100 rounded p-2">
+                      {formatMPE(preparation.referenceWeightNomval)}
+                    </div>
                   </div>
                 </div>
                 {selectedReference && (
                   <div className="mt-2 text-xs text-green-700">
-                    <span className="font-semibold">Auto-filled from inventory:</span> {selectedReference.sticker || selectedReference.name} | Serial: {selectedReference.serial_no || 'N/A'} | Nominal: {selectedReference.nomval}g | Class: {selectedReference.class || 'N/A'}
+                    <span className="font-semibold">Auto-filled from reference table:</span> {selectedReference.iden} | Serial: {selectedReference.serial} | Nominal: {selectedReference.nominal}g | Conventional Mass: {selectedReference.conventional_mass}g
                   </div>
                 )}
               </div>
@@ -935,7 +872,7 @@ function TestWeightsCalibration() {
                 <h3 className="text-base font-semibold text-[#2a9dab] mb-0.5 mt-0.5">Environmental Conditions</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Temperature Start (°C):</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Temperature (°C):</label>
                     {modernInput({
                       name: 'temp',
                       value: preparation.temp,
@@ -944,28 +881,10 @@ function TestWeightsCalibration() {
                     })}
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Humidity Start (%):</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Humidity (%):</label>
                     {modernInput({
                       name: 'humidity',
                       value: preparation.humidity,
-                      onChange: handlePreparationChange,
-                      type: 'number',
-                    })}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Temperature End (°C):</label>
-                    {modernInput({
-                      name: 'tempEnd',
-                      value: preparation.tempEnd,
-                      onChange: handlePreparationChange,
-                      type: 'number',
-                    })}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Humidity End (%):</label>
-                    {modernInput({
-                      name: 'humidityEnd',
-                      value: preparation.humidityEnd,
                       onChange: handlePreparationChange,
                       type: 'number',
                     })}
@@ -1039,7 +958,7 @@ function TestWeightsCalibration() {
                   <tr><td className="border px-2 py-1">u_ba</td><td className="border px-2 py-1 font-mono">{u_ba}</td></tr>
                   <tr><td className="border px-2 py-1">Coverage Factor (k)</td><td className="border px-2 py-1 font-mono">{k}</td></tr>
                   <tr><td className="border px-2 py-1">Combined Standard Uncertainty (u)</td><td className="border px-2 py-1 font-mono">{u_mc_t.toFixed(6)} g</td></tr>
-                  <tr><td className="border px-2 py-1">Expanded Uncertainty (U)</td><td className="border px-2 py-1 font-mono">{U_mc_t.toFixed(6)} g</td></tr>
+                  <tr><td className="border px-2 py-1">UNCERTAINTY OF MEASUREMENT (k=2), mg</td><td className="border px-2 py-1 font-mono">{(U_mc_t * 1000).toFixed(2)} mg</td></tr>
                   <tr className="bg-gray-100"><th colSpan="2" className="text-left px-2 py-1">MPE Check</th></tr>
                   <tr><td className="border px-2 py-1">Correction (mc_t - m)</td><td className="border px-2 py-1 font-mono">{correction.toFixed(6)} g</td></tr>
                   <tr><td className="border px-2 py-1">MPE (from OIML table)</td><td className="border px-2 py-1">{modernInput({ value: mpe, onChange: e => setMpe(e.target.value), type: 'number' })}</td></tr>

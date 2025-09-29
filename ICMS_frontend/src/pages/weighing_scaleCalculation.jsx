@@ -154,6 +154,12 @@ const CardSection = ({ children, className = '' }) => (
   </div>
 );
 
+const clampStep = (step) => {
+  const numeric = Number(step);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.min(7, Math.max(1, numeric));
+};
+
 const modernInput = (props) => {
   const { handleKeyDown: navigationHandler } = useInputNavigation();
 
@@ -217,7 +223,7 @@ function WeighingScaleCalculation() {
     serialNumber: '',
     makeModel: '',
     capacity: '',
-    readability: '1',
+    readability: '',
     tempStart: '',
     tempEnd: '',
     humidityStart: '',
@@ -257,9 +263,25 @@ function WeighingScaleCalculation() {
           weightType: eq.weight_type || '',
           weightCertNo: eq.weight_cert_no || '',
           weightLastCal: eq.weight_last_cal || '',
+          // Auto-fill certificate info using sample/request references
+          referenceNo: eq.reservation_ref_no || '',
+          sampleNo: eq.id ? String(eq.id) : '',
         }));
         setSampleId(eq.id || null);
         setSampleDataLoaded(true);
+        // If the sample is linked to a reservation/reference, fetch request details
+        if (eq && eq.reservation_ref_no) {
+          apiService.getRequestDetails(eq.reservation_ref_no).then(r => {
+            const req = r?.data || {};
+            setEquipment(prev => ({
+              ...prev,
+              customerName: prev.customerName || req.client_name || '',
+              customerAddress: prev.customerAddress || req.address || '',
+              referenceNo: prev.referenceNo || eq.reservation_ref_no || '',
+              dateSubmitted: prev.dateSubmitted || req.date_created || '',
+            }));
+          }).catch(() => {});
+        }
       });
     } else if (passedSerialNumber) {
       // Only fetch by serial if no ID is passed
@@ -280,57 +302,31 @@ function WeighingScaleCalculation() {
           weightType: eq.weight_type || '',
           weightCertNo: eq.weight_cert_no || '',
           weightLastCal: eq.weight_last_cal || '',
+          // Auto-fill certificate info using sample/request references
+          referenceNo: eq.reservation_ref_no || '',
+          sampleNo: eq.id ? String(eq.id) : '',
         }));
         setSampleId(eq.id || null);
         setSampleDataLoaded(true);
+        // If the sample is linked to a reservation/reference, fetch request details
+        if (eq && eq.reservation_ref_no) {
+          apiService.getRequestDetails(eq.reservation_ref_no).then(r => {
+            const req = r?.data || {};
+            setEquipment(prev => ({
+              ...prev,
+              customerName: prev.customerName || req.client_name || '',
+              customerAddress: prev.customerAddress || req.address || '',
+              referenceNo: prev.referenceNo || eq.reservation_ref_no || '',
+              dateSubmitted: prev.dateSubmitted || req.date_created || '',
+            }));
+          }).catch(() => {});
+        }
       });
     } else {
       // No equipment ID or serial number, enable auto-save immediately
       setSampleDataLoaded(true);
     }
   }, [passedSampleId, passedSerialNumber]);
-
-  // Fetch request details to populate certificate information
-  useEffect(() => {
-    if (sampleId) {
-      console.log('Fetching certificate information for sampleId:', sampleId);
-      // First get the sample details to get the reference number
-      apiService.getSampleById(sampleId).then(sampleRes => {
-        const sample = sampleRes.data;
-        console.log('Sample data:', sample); // Debug log
-        if (sample && sample.reservation_ref_no) {
-          console.log('Found reservation_ref_no:', sample.reservation_ref_no);
-          // Fetch request details using the reservation reference number
-          apiService.getRequestDetails(sample.reservation_ref_no).then(requestRes => {
-            const requestData = requestRes.data || requestRes; // Handle both wrapped and direct responses
-            console.log('Request data:', requestData); // Debug log
-            if (requestData) {
-              // Populate certificate information from request data
-              setEquipment(prev => ({
-                ...prev,
-                customerName: requestData.client_name || requestData.customer_name || '',
-                customerAddress: requestData.client_address || requestData.address || requestData.customer_address || '',
-                referenceNo: requestData.reference_number || '',
-                sampleNo: sample.serial_no || '',
-                dateSubmitted: requestData.date_created || new Date().toISOString().split('T')[0],
-              }));
-              console.log('Certificate information populated successfully');
-            } else {
-              console.log('No request data found');
-            }
-          }).catch(err => {
-            console.error('Error fetching request details:', err);
-          });
-        } else {
-          console.log('No reservation_ref_no found in sample data or sample is null');
-        }
-      }).catch(err => {
-        console.error('Error fetching sample details:', err);
-      });
-    } else {
-      console.log('No sampleId provided for certificate information');
-    }
-  }, [sampleId]);
 
   // Auto-populate from existing calibration record if available
   useEffect(() => {
@@ -359,7 +355,7 @@ function WeighingScaleCalculation() {
             { position: 'Center 2', indication: '' },
           ]);
           setRepeatabilityReadings(input.repeatabilityReadings || Array(10).fill(''));
-          setCurrentStep(input.currentStep || 1);
+          setCurrentStep(clampStep(input.currentStep || 1));
         }
       }).catch((err) => {
         // Log unexpected errors
@@ -467,11 +463,11 @@ function WeighingScaleCalculation() {
     ? (center1 + center2) / 2
     : (!isNaN(center1) ? center1 : (!isNaN(center2) ? center2 : undefined));
   const cornerIndices = [1, 2, 3, 4];
-  const cornerErrors = cornerIndices.map(i => {
+  const cornerDiffs = cornerIndices.map(i => {
     const ind = parseFloat(eccRows[i]?.indication);
-    return isNaN(centerIndication) || isNaN(ind) ? 0 : ind - centerIndication;
+    return isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(Math.abs(ind - centerIndication));
   });
-  const maxImax = Math.max(...cornerErrors);
+  const maxImax = Math.max(...cornerDiffs);
 
   // Step 5: Repeatability Test
   const [repeatabilityReadings, setRepeatabilityReadings] = useState(Array(10).fill(''));
@@ -479,27 +475,6 @@ function WeighingScaleCalculation() {
   const handleRepeatabilityChange = (idx, value) => {
     // Only allow numbers or empty string
     if (value === '' || !isNaN(Number(value))) {
-      // Check if user is trying to skip readings
-      const isEmpty = value === '' || value === null || value === undefined;
-      const isValidNumber = !isEmpty && !isNaN(Number(value));
-      
-      // If user is entering a value, check if previous readings are filled
-      if (isValidNumber) {
-        for (let i = 0; i < idx; i++) {
-          const prevReading = repeatabilityReadings[i];
-          const prevIsEmpty = prevReading === '' || prevReading === null || prevReading === undefined;
-          const prevIsInvalid = prevIsEmpty || isNaN(Number(prevReading));
-          
-          if (prevIsInvalid) {
-            toast.error(`Please fill Reading ${i + 1} before entering Reading ${idx + 1}.`, {
-              position: 'top-center',
-              duration: 3000,
-            });
-            return; // Don't update the value
-          }
-        }
-      }
-      
       const updated = [...repeatabilityReadings];
       updated[idx] = value;
       setRepeatabilityReadings(updated);
@@ -520,9 +495,39 @@ const u_rep_all = stddevRepeat;
   // Helper: readability with default (ensures rounding columns not zero)
   const getReadability = () => {
     const val = safeNum(equipment.readability);
-    return val > 0 ? val : 1; // default to 1 g if not provided
+    return val > 0 ? val : 100; // default to 100 g if not provided
   };
 
+  // Add this helper function for per-row expanded uncertainty
+  function getExpandedUncertainty(idx) {
+    const mpe = mpeByCol[idx] || 0;
+    const mpe_g_row = mpe / 1000;
+    const d_row = getReadability();
+    // Updated formulas to match Excel (with sqrt(3))
+    const u_ref_row = mpe_g_row / (3 * Math.sqrt(3));
+    const u_air_row = mpe_g_row / (4 * Math.sqrt(3));
+    const u_drift_row = mpe_g_row / (3 * Math.sqrt(3));
+    const u_conv_row = mpe_g_row / (3 * Math.sqrt(3));
+    const u_round0_row = d_row / (2 * Math.sqrt(3));
+    const u_round1_row = d_row / (2 * Math.sqrt(3));
+    let Imax_row = 0;
+    if (idx < 4) {
+      const ind = parseFloat(eccRows[cornerIndices[idx]]?.indication);
+      Imax_row = isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(ind - centerIndication);
+    } else {
+      Imax_row = maxImax;
+    }
+    // Eccentricity set to 0 and excluded from calculations
+    const u_ecc_row = 0;
+    const u_rep_row = stddevRepeat;
+    // Include both rounding components; exclude eccentricity from combination
+    const u_components_row = [u_ref_row, u_air_row, u_drift_row, u_conv_row, u_round0_row, u_round1_row, u_rep_row];
+    const sumsq = u_components_row.reduce((sum, u) => sum + u * u, 0);
+    const u_combined_row = Math.sqrt(sumsq);
+    const kVal = 2;
+    const U_expanded_row = kVal * u_combined_row;
+    return U_expanded_row;
+  }
 
   // Reference weight uncertainty (MPE/(3*sqrt(3)))
   const mpeNum = safeNum(mpe);
@@ -534,14 +539,22 @@ const u_rep_all = stddevRepeat;
   const u_drift = mpe_g / (3 * Math.sqrt(3));
   // Convection (MPE/(3*sqrt(3)))
   const u_conv = mpe_g / (3 * Math.sqrt(3));
-  // Rounding error =Readability/(2*SQRT(3))
+  // Rounding error (d/(2*sqrt(3))), d = readability
   const d = getReadability();
   const u_round0 = d / (2 * Math.sqrt(3));
   const u_round1 = d / (2 * Math.sqrt(3));
   // Backward-compatible alias for displays/result payloads expecting u_round
   const u_round = u_round0;
+  // Eccentricity - set to 0 and exclude from calculations
+  const u_ecc = 0;
   // Repeatability (s)
   const u_rep = stddevRepeat;
+
+  // Combine all standard uncertainties (include both rounding; exclude eccentricity)
+  const u_components = [u_ref, u_air, u_drift, u_conv, u_round0, u_round1, u_rep];
+  const u_combined = Math.sqrt(u_components.reduce((sum, u) => sum + u * u, 0));
+  const k = 2; // coverage factor
+  const U_expanded = k * u_combined;
 
   // Calculate Test Load (g) for each column
   const testLoadByCol = [1,2,3,4,5,6].map(num =>
@@ -561,49 +574,6 @@ const u_rep_all = stddevRepeat;
   const [linearityResults, setLinearityResults] = useState([
     { indication: '' }, { indication: '' }, { indication: '' }, { indication: '' }, { indication: '' }, { indication: '' }
   ]);
-
-  // Calculate the biggest nominal value from linearity test weights
-  const biggestNominalValue = Math.max(...linearityRows
-    .filter(row => row.nominalValue && !isNaN(parseFloat(row.nominalValue)))
-    .map(row => parseFloat(row.nominalValue))
-  ) || 1; // fallback to 1 if no values
-
-  // Eccentricity uncertainty: (FirstLinearityIndication × Imax) / (2 × BiggestNominalValue × √3)
-  const firstLinearityIndication = parseFloat(linearityResults[0]?.indication) || 0;
-  const u_ecc = (firstLinearityIndication * maxImax) / (2 * biggestNominalValue * Math.sqrt(3));
-
-  // Combine all standard uncertainties (include both rounding and eccentricity)
-  const u_components = [u_ref, u_air, u_drift, u_conv, u_round0, u_round1, u_ecc, u_rep];
-  const u_combined = Math.sqrt(u_components.reduce((sum, u) => sum + u * u, 0));
-  const k = 2; // coverage factor
-  const U_expanded = k * u_combined;
-
-  // Add this helper function for per-row expanded uncertainty
-  function getExpandedUncertainty(idx) {
-    const mpe = mpeByCol[idx] || 0;
-    const mpe_g_row = mpe / 1000;
-    const d_row = getReadability();
-    // Updated formulas to match Excel (with sqrt(3))
-    const u_ref_row = mpe_g_row / (3 * Math.sqrt(3));
-    const u_air_row = mpe_g_row / (4 * Math.sqrt(3));
-    const u_drift_row = mpe_g_row / (3 * Math.sqrt(3));
-    const u_conv_row = mpe_g_row / (3 * Math.sqrt(3));
-    const u_round0_row = d_row / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
-    const u_round1_row = d_row / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
-    // Use maxImax for all rows (consistent with Excel formula)
-    const Imax_row = maxImax;
-    // Eccentricity uncertainty: (FirstLinearityIndication × Imax) / (2 × BiggestNominalValue × √3)
-    const firstLinearityIndicationRow = parseFloat(linearityResults[0]?.indication) || 0;
-    const u_ecc_row = (firstLinearityIndicationRow * Imax_row) / (2 * biggestNominalValue * Math.sqrt(3));
-    const u_rep_row = stddevRepeat;
-    // Include both rounding components and eccentricity in combination
-    const u_components_row = [u_ref_row, u_air_row, u_drift_row, u_conv_row, u_round0_row, u_round1_row, u_ecc_row, u_rep_row];
-    const sumsq = u_components_row.reduce((sum, u) => sum + u * u, 0);
-    const u_combined_row = Math.sqrt(sumsq);
-    const kVal = 2;
-    const U_expanded_row = kVal * u_combined_row;
-    return U_expanded_row;
-  }
 
   const handleResultIndicationChange = (idx, value) => {
     setLinearityResults(prev => prev.map((row, i) => i === idx ? { ...row, indication: value } : row));
@@ -689,138 +659,132 @@ const u_rep_all = stddevRepeat;
               <MdOutlineDeviceHub className="h-5 w-5 text-[#2a9dab] mr-2" />
               <span className="text-[#2a9dab] font-semibold text-sm">Step 1: Equipment & Environmental Conditions</span>
             </div>
+            {/* Certificate Information hidden to save space (data still auto-populated in state) */}
             
             
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Serial Number:</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Serial Number:</label>
                 {modernInput({
                   name: 'serialNumber',
                   value: equipment.serialNumber,
                   readOnly: true,
-                  className: 'bg-gray-100 text-sm py-3',
+                  className: 'bg-gray-100',
                 })}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Make/Model:</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Make/Model:</label>
                 {modernInput({
                   name: 'makeModel',
                   value: equipment.makeModel,
                   onChange: handleEquipmentChange,
-                  placeholder: 'Mettler Toledo',
-                  className: 'text-sm py-3',
+                  placeholder: 'e.g. Mettler Toledo',
                 })}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Temperature Start (°C):</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Temperature Start (°C):</label>
                 {modernInput({
                   name: 'tempStart',
                   value: equipment.tempStart,
                   onChange: handleEquipmentChange,
-                  placeholder: '23.0',
+                  placeholder: 'e.g. 23.0',
                   type: 'number',
-                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Temperature End (°C):</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Temperature End (°C):</label>
                 {modernInput({
                   name: 'tempEnd',
                   value: equipment.tempEnd,
                   onChange: handleEquipmentChange,
-                  placeholder: '23.2',
+                  placeholder: 'e.g. 23.2',
                   type: 'number',
-                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Humidity Start (%):</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Humidity Start (%):</label>
                 {modernInput({
                   name: 'humidityStart',
                   value: equipment.humidityStart,
                   onChange: handleEquipmentChange,
-                  placeholder: '45',
+                  placeholder: 'e.g. 45',
                   type: 'number',
-                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Humidity End (%):</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Humidity End (%):</label>
                 {modernInput({
                   name: 'humidityEnd',
                   value: equipment.humidityEnd,
                   onChange: handleEquipmentChange,
-                  placeholder: '46',
+                  placeholder: 'e.g. 46',
                   type: 'number',
-                  className: 'text-sm py-3',
+                  className: 'mb-4',
                 })}
               </div>
             </div>
-            {/* Weight Standards and Capacity Information */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            {/* Remove the 'Weights' label above the Type, Certificate No., and Date of Last Calibration input fields */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Type:</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Type:</label>
                 {modernInput({
                   name: 'weightType',
                   value: equipment.weightType || '',
                   onChange: handleEquipmentChange,
-                  placeholder: 'OIML Class M',
-                  className: 'text-sm py-3',
+                  placeholder: 'e.g. OIML Class M',
                 })}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Certificate No.:</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Certificate No.:</label>
                 {modernInput({
                   name: 'weightCertNo',
                   value: equipment.weightCertNo || '',
                   onChange: handleEquipmentChange,
                   placeholder: '',
-                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Date of Last Calibration:</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Date of Last Calibration:</label>
                 {modernInput({
                   name: 'weightLastCal',
                   value: equipment.weightLastCal || '',
                   onChange: handleEquipmentChange,
                   placeholder: '',
                   type: 'date',
-                  className: 'text-sm py-3',
                 })}
               </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Maximum Capacity (g):</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Maximum Capacity (g):</label>
                 {modernInput({
                   name: 'maxCapacity',
                   value: equipment.maxCapacity || '',
                   onChange: handleEquipmentChange,
-                  placeholder: '120000',
+                  placeholder: 'e.g. 120000',
                   type: 'number',
-                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Capacity (g):</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Minimum Capacity (g):</label>
                 {modernInput({
                   name: 'minCapacity',
                   value: equipment.minCapacity || '',
                   onChange: handleEquipmentChange,
-                  placeholder: '0',
+                  placeholder: 'e.g. 0',
                   type: 'number',
-                  className: 'text-sm py-3',
                 })}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Readability (g):</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Readability (g):</label>
                 {modernInput({
                   name: 'readability',
                   value: equipment.readability,
                   onChange: handleEquipmentChange,
-                  placeholder: '250',
+                  placeholder: 'e.g. 250',
                   type: 'number',
-                  className: 'text-sm py-3',
                 })}
               </div>
             </div>
@@ -846,7 +810,7 @@ const u_rep_all = stddevRepeat;
                   {eccRows.map((row, idx) => {
                     const isCenter = row.position.startsWith('Center');
                     const ind = parseFloat(row.indication);
-                    const error = isCenter ? '' : (isNaN(centerIndication) || isNaN(ind) ? '' : (ind - centerIndication).toFixed(2));
+                    const error = isCenter ? '' : (isNaN(centerIndication) || isNaN(ind) ? '' : (Math.abs(ind - centerIndication)).toFixed(6));
                     // Show 'Center' label for both Center 1 and Center 2
                     const displayPosition = row.position.startsWith('Center') ? 'Center' : row.position;
                     return (
@@ -870,8 +834,8 @@ const u_rep_all = stddevRepeat;
             </div>
             {/* Replace the styled summary with plain text */}
             <div className="mt-2 text-sm">
-              <div>Average of Center (g): <span className="font-mono">{centerIndication ? centerIndication.toFixed(2) : '0.00'}</span></div>
-              <div><span style={{fontStyle:'italic'}}>I</span><sub>max</sub> (g): <span className="font-mono">{maxImax.toFixed(2)}</span></div>
+              <div>Average of Center (g): <span className="font-mono">{centerIndication ? centerIndication.toFixed(6) : '0.000000'}</span></div>
+              <div><span style={{fontStyle:'italic'}}>I</span><sub>max</sub> (g): <span className="font-mono">{maxImax.toFixed(6)}</span></div>
             </div>
           </CardSection>
         );
@@ -884,30 +848,18 @@ const u_rep_all = stddevRepeat;
             </div>
             <div className="mb-2 text-xs text-gray-600">Enter 10 readings for the same load:</div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
-              {repeatabilityReadings.map((val, idx) => {
-                // Check if this field should be enabled (previous fields are filled)
-                const isEnabled = idx === 0 || repeatabilityReadings.slice(0, idx).every(reading => 
-                  reading !== '' && reading !== null && reading !== undefined && !isNaN(Number(reading))
-                );
-                
-                return (
-                  <div key={idx}>
-                    <label className={`block text-xs mb-1 ${
-                      isEnabled ? 'text-gray-700' : 'text-gray-400'
-                    }`}>
-                      Reading {idx + 1}
-                    </label>
-                    {modernInput({
-                      value: val || '', // Always a string or empty
-                      onChange: e => handleRepeatabilityChange(idx, e.target.value),
-                      type: 'number',
-                      placeholder: `R${idx + 1}`,
-                      className: `w-24 ${!isEnabled ? 'bg-gray-100 cursor-not-allowed' : ''}`,
-                      disabled: !isEnabled,
-                    })}
-                  </div>
-                );
-              })}
+              {repeatabilityReadings.map((val, idx) => (
+                <div key={idx}>
+                  <label className="block text-xs text-gray-500 mb-1">Reading {idx + 1}</label>
+                  {modernInput({
+                    value: val || '', // Always a string or empty
+                    onChange: e => handleRepeatabilityChange(idx, e.target.value),
+                    type: 'number',
+                    placeholder: `R${idx + 1}`,
+                    className: 'w-24',
+                  })}
+                </div>
+              ))}
             </div>
             {/* Replace the styled mean/stddev display with plain text */}
             <div className="mt-2 text-sm">
@@ -1113,16 +1065,25 @@ const u_rep_all = stddevRepeat;
                     const u_air_row_budget = mpe_g_row_budget / (4 * Math.sqrt(3));
                     const u_drift_row_budget = mpe_g_row_budget / (3 * Math.sqrt(3));
                     const u_conv_row_budget = mpe_g_row_budget / (3 * Math.sqrt(3));
-                    const u_round0_row_budget = d_row_budget / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
-                    const u_round1_row_budget = d_row_budget / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
-                    // Use maxImax for all rows (consistent with Excel formula)
-                    const Imax_row_budget = maxImax;
-                    // Eccentricity uncertainty: (FirstLinearityIndication × Imax) / (2 × BiggestNominalValue × √3)
-                    const firstLinearityIndicationBudget = parseFloat(linearityResults[0]?.indication) || 0;
-                    const u_ecc_row_budget = (firstLinearityIndicationBudget * Imax_row_budget) / (2 * biggestNominalValue * Math.sqrt(3));
+                    const u_round0_row_budget = d_row_budget / (2 * Math.sqrt(3));
+                    const u_round1_row_budget = d_row_budget / (2 * Math.sqrt(3));
+                    // Calculate per-row Imax for eccentricity (Excel: each row has its own value)
+                    let Imax_row_budget = 0;
+                    if (idx < 4) {
+                      // Use the corresponding corner
+                      const ind = parseFloat(eccRows[cornerIndices[idx]]?.indication);
+                      Imax_row_budget = isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(Math.abs(ind - centerIndication));
+                    } else {
+                      // Use the max of all corners
+                      Imax_row_budget = Math.max(...cornerIndices.map(i => {
+                        const ind = parseFloat(eccRows[i]?.indication);
+                        return isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(Math.abs(ind - centerIndication));
+                      }));
+                    }
+                    // Eccentricity excluded from calculations in this budget section
                     // Use the same repeatability value for all rows (Excel logic)
                     const u_rep_row_budget = u_rep_all;
-                    const u_components_row_budget = [u_ref_row_budget, u_air_row_budget, u_drift_row_budget, u_conv_row_budget, u_round0_row_budget, u_round1_row_budget, u_ecc_row_budget, u_rep_row_budget];
+                    const u_components_row_budget = [u_ref_row_budget, u_air_row_budget, u_drift_row_budget, u_conv_row_budget, u_round0_row_budget, u_round1_row_budget, u_rep_row_budget];
                     // Calculate sum of squares with full precision
                     const sumsq_budget = u_components_row_budget.reduce((sum, u) => sum + u * u, 0);
                     // Only round the final result for display
@@ -1139,7 +1100,7 @@ const u_rep_all = stddevRepeat;
                         <td className="border px-2 py-1 text-right font-mono">{u_conv_row_budget.toFixed(10)}</td>
                         <td className="border px-2 py-1 text-right font-mono">{u_round0_row_budget.toFixed(10)}</td>
                         <td className="border px-2 py-1 text-right font-mono">{u_round1_row_budget.toFixed(10)}</td> {/* u(δI_digl) */}
-                        <td className="border px-2 py-1 text-right font-mono">{u_ecc_row_budget.toFixed(10)}</td>
+                        <td className="border px-2 py-1 text-right font-mono">{(0).toFixed(10)}</td>
                         <td className="border px-2 py-1 text-right font-mono">{u_rep_row_budget.toFixed(10)}</td>
                         <td className="border px-2 py-1 text-right font-mono">{u_combined_row_budget.toFixed(6)}</td>
                         <td className="border px-2 py-1 text-center">{kVal.toFixed(2)}</td>
@@ -1246,7 +1207,11 @@ const u_rep_all = stddevRepeat;
           </CardSection>
         );
       default:
-        return null;
+        return (
+          <CardSection>
+            <div className="text-sm text-red-600">Unknown step: {String(currentStep)}. Please navigate using the Previous/Next buttons.</div>
+          </CardSection>
+        );
     }
   };
 
@@ -1276,7 +1241,7 @@ const u_rep_all = stddevRepeat;
         calibration_type: 'Weighing Scale',
         input_data: inputData,
         result_data: resultData,
-        calibrated_by: user?.id || user?.client_id || null,
+        calibrated_by: user?.id || null,
         date_started: new Date().toISOString(),
         date_completed: null // Don't mark as completed for auto-save
       });
@@ -1383,7 +1348,7 @@ const u_rep_all = stddevRepeat;
             let error = 0;
             if (!isCenter) {
               // For corner positions, error = indication - center indication (same as Step 2)
-              error = isNaN(centerIndication) || isNaN(ind) ? 0 : ind - centerIndication;
+              error = isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(ind - centerIndication);
             }
             // Center positions show empty/0 error
             
@@ -1406,8 +1371,7 @@ const u_rep_all = stddevRepeat;
             { id: 2, name: "Front Left" },
             { id: 3, name: "Back Left" },
             { id: 4, name: "Back Right" },
-            { id: 5, name: "Front Right" },
-            { id: 6, name: "Center" }
+            { id: 5, name: "Front Right" }
           ],
           center_indication_g: centerIndication || 0,
           max_eccentricity_g: maxImax
@@ -1416,8 +1380,8 @@ const u_rep_all = stddevRepeat;
         // Linearity Test Results
         linearity: {
           measurements: linearityResults.map((result, index) => {
-            // Use actual test load values calculated from linearityRows
-            const load = testLoadByCol[index] || 0;
+            // Based on certificate format: Load is always 0.000, Error = Indication - Load
+            const load = 0.000; // Always 0.000 as shown in certificate
             const indication = parseFloat(result.indication) || 0;
             const error = indication - load; // Error = Indication - Load
             const expandedUnc = getExpandedUncertainty(index);
@@ -1440,7 +1404,7 @@ const u_rep_all = stddevRepeat;
           x_axis_label: "Load (g)",
           y_axis_label: "Error (g)",
           data_points: linearityResults.map((result, index) => {
-            const load = testLoadByCol[index] || 0;
+            const load = 0.000; // Always 0.000 as shown in certificate
             const indication = parseFloat(result.indication) || 0;
             const error = indication - load; // Error = Indication - Load
             return {
@@ -1489,7 +1453,7 @@ const u_rep_all = stddevRepeat;
         calibration_type: 'Weighing Scale',
         input_data: inputData,
         result_data: resultData,
-        calibrated_by: user?.id || user?.client_id || null,
+        calibrated_by: user?.id || null,
         date_started: new Date().toISOString(),
         date_completed: new Date().toISOString()
       });
@@ -1526,7 +1490,7 @@ const u_rep_all = stddevRepeat;
         calibration_type: 'Weighing Scale',
         input_data: inputData,
         result_data: resultData,
-        calibrated_by: user?.id || user?.client_id || null,
+        calibrated_by: user?.id || null,
         date_started: new Date().toISOString(),
         date_completed: new Date().toISOString() // Mark as completed
       });
@@ -1621,7 +1585,7 @@ const u_rep_all = stddevRepeat;
       setLinearityResults(restoredData.linearityResults);
     }
     if (restoredData.currentStep) {
-      setCurrentStep(restoredData.currentStep);
+      setCurrentStep(clampStep(restoredData.currentStep));
     }
   }, []);
 
@@ -1775,10 +1739,11 @@ const u_rep_all = stddevRepeat;
           </div>
           {renderStepper()}
           <div className="rounded-lg border p-3 bg-white shadow-sm border-blue-100">
+            <div className="text-xs text-gray-500 mb-2">Debug currentStep: {currentStep}</div>
             {renderStepContent()}
             <div className="flex justify-between mt-4 pt-3 border-t">
               {modernButton({
-                onClick: () => setCurrentStep(Math.max(1, currentStep - 1)),
+                onClick: () => setCurrentStep((s) => clampStep(s - 1)),
                 disabled: currentStep === 1,
                 variant: 'secondary',
                 children: 'Previous',
@@ -1960,7 +1925,7 @@ const u_rep_all = stddevRepeat;
                     if (ok) {
                       toast.success('Progress saved.');
                       setShowNextConfirm(false);
-                      setCurrentStep((s) => Math.min(7, s + 1));
+                      setCurrentStep((s) => clampStep(s + 1));
                     } else {
                       toast.error('Failed to save progress.');
                     }
@@ -1980,5 +1945,4 @@ const u_rep_all = stddevRepeat;
     </div>
   );
 }
-
 export default WeighingScaleCalculation;

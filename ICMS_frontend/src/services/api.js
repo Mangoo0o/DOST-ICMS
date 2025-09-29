@@ -66,6 +66,14 @@ export const apiService = {
     return api.put('/api/users/update_user.php', userData);
   },
 
+  async changePassword({ current_password, new_password, confirm_password }) {
+    return api.post('/api/users/change_password.php', {
+      current_password,
+      new_password,
+      confirm_password
+    });
+  },
+
   // Request API methods
   async createRequest(requestData) {
     return api.post('/api/request/create_reservation.php', requestData);

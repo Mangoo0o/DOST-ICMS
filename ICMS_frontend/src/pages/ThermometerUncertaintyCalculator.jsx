@@ -135,12 +135,12 @@ const useInputNavigation = () => {
   return { handleKeyDown, getNextInput, getPreviousInput };
 };
 
-const DEFAULT_US = 0.023; // Standard uncertainty (°C)
+const DEFAULT_US = 0.024; // Standard uncertainty (°C) - from spreadsheet
 const DEFAULT_SC1 = 1;
 const DEFAULT_DF1 = 1e26; // Effectively infinite
-const DEFAULT_RG = 0.5; // Resolution (°C)
+const DEFAULT_RG = 0; // Resolution (°C) - default value, user input
 const DEFAULT_RD = 1; // Readability multiplier
-const DEFAULT_K = 2; // Coverage factor for 95% confidence
+const DEFAULT_K = 1.97; // Coverage factor for 95% confidence - from spreadsheet
 
 function stddev(arr) {
   const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
@@ -162,7 +162,7 @@ const CardSection = ({ children, className = '' }) => (
   </div>
 );
 
-const ModernInput = (props) => {
+const input = (props) => {
   const { handleKeyDown: navigationHandler } = useInputNavigation();
 
   const handleKeyDown = (e) => {
@@ -220,25 +220,64 @@ function ThermometerUncertaintyCalculator() {
   const [df1, setDf1] = useState(DEFAULT_DF1);
   const [rg, setRg] = useState(DEFAULT_RG);
   const [rd, setRd] = useState(DEFAULT_RD);
-  const [repeatability, setRepeatability] = useState(['', '', '']);
+  const [repeatability, setRepeatability] = useState([
+    ['', '', ''], // Testpoint 1: 3 trials
+    ['', '', ''], // Testpoint 2: 3 trials  
+    ['', '', ''], // Testpoint 3: 3 trials
+    ['', '', '']  // Testpoint 4: 3 trials
+  ]);
+  
+  // Reference standard data - temperature points and corrections
+  const [referenceData, setReferenceData] = useState([
+    { temp: 0.00, indicated: 0.000, correction: 0.000, uncertainty: 0.023 },
+    { temp: 50.00, indicated: 49.000, correction: 1.000, uncertainty: 0.023 },
+    { temp: 100.00, indicated: 98.000, correction: 2.000, uncertainty: 0.023 }
+  ]);
+  
+  // Environment conditions
+  const [envConditions, setEnvConditions] = useState({
+    startTime: '10:00 AM',
+    endTime: '2:30 PM',
+    startTemp: 24.6,
+    endTemp: 24.3,
+    avgTemp: 24.5,
+    startHumidity: 53.8,
+    endHumidity: 54.2,
+    avgHumidity: 54.0
+  });
 
-  // Calculations
-  const validRepeat = repeatability.every(v => v !== '' && !isNaN(Number(v)));
-  const repeatVals = repeatability.map(Number);
-  const n = repeatVals.length;
-  // const mean = validRepeat ? repeatVals.reduce((a, b) => a + b, 0) / n : 0;
-  const sr = validRepeat ? stddev(repeatVals) : 0;
-  const ur = validRepeat ? sr / Math.sqrt(n) : 0;
+  // Calculations for repeatability
+  const validRepeat = Array.isArray(repeatability) && repeatability.every(testpoint => 
+    Array.isArray(testpoint) && testpoint.every(trial => trial !== '' && !isNaN(Number(trial)))
+  );
+  
+  // Calculate repeatability for each testpoint
+  const repeatabilityResults = Array.isArray(repeatability) ? repeatability.map(testpoint => {
+    if (!Array.isArray(testpoint)) return { mean: 0, sr: 0, ur: 0, n: 3 };
+    const vals = testpoint.map(Number);
+    const n = vals.length;
+    const mean = vals.reduce((a, b) => a + b, 0) / n;
+    const sr = stddev(vals);
+    const ur = sr / Math.sqrt(n);
+    return { mean, sr, ur, n };
+  }) : [];
+  
+  // Use the first testpoint for overall calculations (or average if needed)
+  const firstTestpoint = repeatabilityResults[0] || { mean: 0, sr: 0, ur: 0, n: 3 };
+  const n = firstTestpoint.n;
+  const mean = firstTestpoint.mean;
+  const sr = firstTestpoint.sr;
+  const ur = firstTestpoint.ur;
   const df2 = n - 1;
   const sc2 = 1;
 
-  // Readability
-  const ud = (rg * rd) / 3;
+  // Readability - Fixed formula from spreadsheet: Ud = (Rg * Rd) / √3
+  const ud = (rg * rd) / Math.sqrt(3);
   const sc3 = 1;
-  const df3 = Infinity;
+  const df3 = 200; // From spreadsheet
 
-  // Combined standard uncertainty
-  const u1 = us;
+  // Reference standard uncertainty (U1) - from spreadsheet: Un = ΣUn_i / k
+  const u1 = us / DEFAULT_K; // Un = Us / k where k=1.97 for 95% confidence
   const u2 = ur;
   const u3 = ud;
   const uc = Math.sqrt(
@@ -263,7 +302,7 @@ function ThermometerUncertaintyCalculator() {
     return denominator === 0 ? Infinity : numerator / denominator;
   }
   const veffVal = veff();
-  const k = DEFAULT_K; // For 95% confidence
+  const k = DEFAULT_K; // 1.97 for 95% confidence from spreadsheet
   const ue = k * uc;
 
   // Stepper UI
@@ -315,18 +354,68 @@ function ThermometerUncertaintyCalculator() {
           <CardSection>
             <div className="flex items-center mb-3">
               <MdThermostat className="h-5 w-5 text-[#2a9dab] mr-2" />
-              <span className="text-[#2a9dab] font-semibold text-sm">Step 1: Reference Standard</span>
+              <span className="text-[#2a9dab] font-semibold text-sm">Step 1: Reference Standard Uncertainty (Un/U1)</span>
             </div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Reference Standard Uncertainty (U1, °C):</label>
-            {ModernInput({
-              type: 'number',
-              step: '0.0001',
-              value: us,
-              onChange: e => setUs(Number(e.target.value)),
-              placeholder: '0.023',
-              className: 'w-32',
-            })}
-            <span className="ml-2 text-gray-500 text-xs">(default: 0.023)</span>
+            
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold mb-2">Standard Platinum Resistance Thermometer / Digital Thermometer with PT100 Probe</h4>
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div>Confidence level = 95%</div>
+                <div>Degrees of freedom (infinite), df1 = {df1.toExponential(2)}</div>
+                <div>Standard k factor (from cal cert) k = {DEFAULT_K}</div>
+                <div>Sensitivity Coefficient, sc1 = {sc1}</div>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold mb-2">Reference Standard Data</h4>
+              <table className="w-full text-xs border-collapse border border-gray-300">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-gray-300 px-2 py-1">Actual Temperature (°C)</th>
+                    <th className="border border-gray-300 px-2 py-1">Digital Thermometer Indicated Values (°C)</th>
+                    <th className="border border-gray-300 px-2 py-1">Corrections</th>
+                    <th className="border border-gray-300 px-2 py-1">Standard uncertainty (from cal cert.), Us</th>
+                    <th className="border border-gray-300 px-2 py-1">Uncertainty Un (°C)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {referenceData.map((row, index) => (
+                    <tr key={index}>
+                      <td className="border border-gray-300 px-2 py-1 text-center">
+                        {row.temp.toFixed(2)}
+                      </td>
+                      <td className="border border-gray-300 px-2 py-1">
+                        {input({
+                          type: 'number',
+                          step: '0.001',
+                          value: row.indicated,
+                          onChange: e => {
+                            const newData = [...referenceData];
+                            newData[index].indicated = Number(e.target.value);
+                            newData[index].correction = newData[index].temp - newData[index].indicated;
+                            setReferenceData(newData);
+                          },
+                          className: 'w-full text-center',
+                        })}
+                      </td>
+                      <td className="border border-gray-300 px-2 py-1 text-center">
+                        {row.correction.toFixed(3)}
+                      </td>
+                      <td className="border border-gray-300 px-2 py-1 text-center">
+                        {row.uncertainty.toFixed(3)}
+                      </td>
+                      <td className="border border-gray-300 px-2 py-1 text-center">
+                        {(row.uncertainty / DEFAULT_K).toFixed(4)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="mt-2 text-xs text-gray-600">
+                Formula: Un = ΣUn_i / k = {us.toFixed(3)} / {DEFAULT_K} = {(us / DEFAULT_K).toFixed(4)} °C
+              </div>
+            </div>
           </CardSection>
         );
       case 2:
@@ -334,27 +423,232 @@ function ThermometerUncertaintyCalculator() {
           <CardSection>
             <div className="flex items-center mb-3">
               <MdScience className="h-5 w-5 text-[#2a9dab] mr-2" />
-              <span className="text-[#2a9dab] font-semibold text-sm">Step 2: Repeatability</span>
+              <span className="text-[#2a9dab] font-semibold text-sm">Step 2: Uncertainty due to Repeatability (Ur/U2)</span>
             </div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Repeatability Measurements (U2, °C):</label>
-            <div className="flex gap-2">
-              {repeatability.map((val, i) => (
-                ModernInput({
-                  key: i,
-                  type: 'number',
-                  step: '0.01',
-                  value: val,
-                  onChange: e => {
-                    const arr = [...repeatability];
-                    arr[i] = e.target.value;
-                    setRepeatability(arr);
-                  },
-                  className: 'w-32',
-                  placeholder: `Trial ${i + 1}`,
-                })
-              ))}
+            
+            <div className="mb-4">
+              <div className="grid grid-cols-3 gap-4 text-xs mb-3">
+                <div>No. Of Trials (n) = {n}</div>
+                <div>Degrees of freedom (n-1), df2 = {df2}</div>
+                <div>Sensitivity Coefficient, sc2 = {sc2}</div>
+              </div>
             </div>
-            <span className="ml-2 text-gray-500 text-xs">(enter 3 values)</span>
+
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold mb-2">Testpoint Data</h4>
+              <table className="w-full text-xs border-collapse border border-gray-300 mb-3">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-gray-300 px-2 py-1">x</th>
+                    <th className="border border-gray-300 px-2 py-1">36</th>
+                    <th className="border border-gray-300 px-2 py-1 bg-yellow-200">309.15</th>
+                    <th className="border border-gray-300 px-2 py-1">100</th>
+                    <th className="border border-gray-300 px-2 py-1">121</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-1"></td>
+                    <td className="border border-gray-300 px-2 py-1">Testpoint 1</td>
+                    <td className="border border-gray-300 px-2 py-1"></td>
+                    <td className="border border-gray-300 px-2 py-1">Testpoint 2</td>
+                    <td className="border border-gray-300 px-2 py-1">Testpoint 3</td>
+                  </tr>
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-1">Trial 1</td>
+                    <td className="border border-gray-300 px-2 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={Array.isArray(repeatability) && repeatability[0] ? repeatability[0][0] || '' : ''}
+                        onChange={e => {
+                          const newRepeatability = [...repeatability];
+                          if (!Array.isArray(newRepeatability[0])) {
+                            newRepeatability[0] = ['', '', ''];
+                          }
+                          newRepeatability[0] = [...newRepeatability[0]];
+                          newRepeatability[0][0] = e.target.value;
+                          setRepeatability(newRepeatability);
+                        }}
+                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                        placeholder="50.0"
+                      />
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1 bg-yellow-200 text-center">
+                      {Array.isArray(repeatability) && repeatability[0] ? 
+                        (parseFloat(repeatability[0][0] || 0) + 273.15).toFixed(2) : '273.15'}
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={Array.isArray(repeatability) && repeatability[1] ? repeatability[1][0] || '' : ''}
+                        onChange={e => {
+                          const newRepeatability = [...repeatability];
+                          if (!Array.isArray(newRepeatability[1])) {
+                            newRepeatability[1] = ['', '', ''];
+                          }
+                          newRepeatability[1] = [...newRepeatability[1]];
+                          newRepeatability[1][0] = e.target.value;
+                          setRepeatability(newRepeatability);
+                        }}
+                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                      />
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={Array.isArray(repeatability) && repeatability[2] ? repeatability[2][0] || '' : ''}
+                        onChange={e => {
+                          const newRepeatability = [...repeatability];
+                          if (!Array.isArray(newRepeatability[2])) {
+                            newRepeatability[2] = ['', '', ''];
+                          }
+                          newRepeatability[2] = [...newRepeatability[2]];
+                          newRepeatability[2][0] = e.target.value;
+                          setRepeatability(newRepeatability);
+                        }}
+                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-1">Trial 2</td>
+                    <td className="border border-gray-300 px-2 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={Array.isArray(repeatability) && repeatability[0] ? repeatability[0][1] || '' : ''}
+                        onChange={e => {
+                          const newRepeatability = [...repeatability];
+                          if (!Array.isArray(newRepeatability[0])) {
+                            newRepeatability[0] = ['', '', ''];
+                          }
+                          newRepeatability[0] = [...newRepeatability[0]];
+                          newRepeatability[0][1] = e.target.value;
+                          setRepeatability(newRepeatability);
+                        }}
+                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                        placeholder="50.0"
+                      />
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1 bg-yellow-200 text-center">
+                      {Array.isArray(repeatability) && repeatability[0] ? 
+                        (parseFloat(repeatability[0][1] || 0) + 273.15).toFixed(2) : '273.15'}
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={Array.isArray(repeatability) && repeatability[1] ? repeatability[1][1] || '' : ''}
+                        onChange={e => {
+                          const newRepeatability = [...repeatability];
+                          if (!Array.isArray(newRepeatability[1])) {
+                            newRepeatability[1] = ['', '', ''];
+                          }
+                          newRepeatability[1] = [...newRepeatability[1]];
+                          newRepeatability[1][1] = e.target.value;
+                          setRepeatability(newRepeatability);
+                        }}
+                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                      />
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={Array.isArray(repeatability) && repeatability[2] ? repeatability[2][1] || '' : ''}
+                        onChange={e => {
+                          const newRepeatability = [...repeatability];
+                          if (!Array.isArray(newRepeatability[2])) {
+                            newRepeatability[2] = ['', '', ''];
+                          }
+                          newRepeatability[2] = [...newRepeatability[2]];
+                          newRepeatability[2][1] = e.target.value;
+                          setRepeatability(newRepeatability);
+                        }}
+                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-1">Trial 3</td>
+                    <td className="border border-gray-300 px-2 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={Array.isArray(repeatability) && repeatability[0] ? repeatability[0][2] || '' : ''}
+                        onChange={e => {
+                          const newRepeatability = [...repeatability];
+                          if (!Array.isArray(newRepeatability[0])) {
+                            newRepeatability[0] = ['', '', ''];
+                          }
+                          newRepeatability[0] = [...newRepeatability[0]];
+                          newRepeatability[0][2] = e.target.value;
+                          setRepeatability(newRepeatability);
+                        }}
+                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                        placeholder="50.0"
+                      />
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1 bg-yellow-200 text-center">
+                      {Array.isArray(repeatability) && repeatability[0] ? 
+                        (parseFloat(repeatability[0][2] || 0) + 273.15).toFixed(2) : '273.15'}
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={Array.isArray(repeatability) && repeatability[1] ? repeatability[1][2] || '' : ''}
+                        onChange={e => {
+                          const newRepeatability = [...repeatability];
+                          if (!Array.isArray(newRepeatability[1])) {
+                            newRepeatability[1] = ['', '', ''];
+                          }
+                          newRepeatability[1] = [...newRepeatability[1]];
+                          newRepeatability[1][2] = e.target.value;
+                          setRepeatability(newRepeatability);
+                        }}
+                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                      />
+                    </td>
+                    <td className="border border-gray-300 px-2 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={Array.isArray(repeatability) && repeatability[2] ? repeatability[2][2] || '' : ''}
+                        onChange={e => {
+                          const newRepeatability = [...repeatability];
+                          if (!Array.isArray(newRepeatability[2])) {
+                            newRepeatability[2] = ['', '', ''];
+                          }
+                          newRepeatability[2] = [...newRepeatability[2]];
+                          newRepeatability[2][2] = e.target.value;
+                          setRepeatability(newRepeatability);
+                        }}
+                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+
+            {validRepeat && (
+              <div className="bg-green-50 p-3 rounded border border-green-200">
+                <h4 className="text-sm font-semibold mb-2 text-green-800">Repeatability Calculation Summary</h4>
+                <div className="grid grid-cols-1 gap-2 text-xs">
+                  <div>Testpoint 1 - Average (x') = {repeatabilityResults[0]?.mean.toFixed(1) || 0}</div>
+                  <div>Testpoint 2 - Average (x') = {repeatabilityResults[1]?.mean.toFixed(1) || 0}</div>
+                  <div>Testpoint 3 - Average (x') = {repeatabilityResults[2]?.mean.toFixed(1) || 0}</div>
+                  <div className="mt-2">Overall Standard deviation (Sr) = {sr.toFixed(4)}</div>
+                  <div>Ur = Sr / √n = {sr.toFixed(4)} / √{n} = {ur.toFixed(4)} °C</div>
+                  <div>Formula: Sr = √(1/(n-1)[Σ(x-x')²])</div>
+                </div>
+              </div>
+            )}
           </CardSection>
         );
       case 3:
@@ -362,24 +656,25 @@ function ThermometerUncertaintyCalculator() {
           <CardSection>
             <div className="flex items-center mb-3">
               <FaThermometerHalf className="h-5 w-5 text-[#2a9dab] mr-2" />
-              <span className="text-[#2a9dab] font-semibold text-sm">Step 3: Readability</span>
+              <span className="text-[#2a9dab] font-semibold text-sm">Step 3: Uncertainty due to Readability (Ud/U3)</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Resolution (Rg, °C):</label>
-                {ModernInput({
+                <label className="block text-xs font-medium text-gray-700 mb-1">Resolution/Graduation (Rg, °C):</label>
+                {input({
                   type: 'number',
                   step: '0.01',
                   value: rg,
                   onChange: e => setRg(Number(e.target.value)),
                   className: 'w-24',
-                  placeholder: '0.5',
+                  placeholder: '0',
                 })}
-                <span className="ml-2 text-gray-500 text-xs">(default: 0.5)</span>
+                <span className="text-gray-500 text-xs">(default: 0)</span>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Readability Multiplier (Rd):</label>
-                {ModernInput({
+                <label className="block text-xs font-medium text-gray-700 mb-1">Readability (Rd):</label>
+                {input({
                   type: 'number',
                   step: '0.1',
                   value: rd,
@@ -387,7 +682,44 @@ function ThermometerUncertaintyCalculator() {
                   className: 'w-24',
                   placeholder: '1',
                 })}
-                <span className="ml-2 text-gray-500 text-xs">(default: 1)</span>
+                <span className="text-gray-500 text-xs">(0.1 for 1/10, 0.2 for 1/5, 0.5 for 1/2, 1 for 1/1)</span>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <div className="grid grid-cols-2 gap-4 text-xs mb-3">
+                <div>Degrees of freedom df3 = {df3}</div>
+                <div>Sensitivity Coefficient, sc3 = {sc3}</div>
+              </div>
+            </div>
+
+            <div className="bg-orange-50 p-3 rounded border border-orange-200">
+              <h4 className="text-sm font-semibold mb-2 text-orange-800">Readability Calculation</h4>
+              <div className="grid grid-cols-1 gap-2 text-xs">
+                <div>Ud = (Rg × Rd) / √3 = ({rg} × {rd}) / √3 = {ud.toFixed(8)} °C</div>
+                <div>Formula: Ud = (Rg × Rd) / √3</div>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <h4 className="text-sm font-semibold mb-2">Additional Parameters</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Absolute uncertainty of device:</label>
+                  <div className="text-gray-600">0.5</div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Measured value:</label>
+                  <div className="text-gray-600">25.2</div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Relative uncertainty %R:</label>
+                  <div className="text-gray-600">1.984126984 (5 best, 10 good, 20 poor)</div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">1/2(100/%R)² = 0.5(100/%R)²:</label>
+                  <div className="text-gray-600">0.5(100/1.984126984)²</div>
+                </div>
               </div>
             </div>
           </CardSection>
@@ -397,12 +729,47 @@ function ThermometerUncertaintyCalculator() {
           <CardSection>
             <div className="flex items-center mb-3">
               <MdCalculate className="h-5 w-5 text-[#2a9dab] mr-2" />
-              <span className="text-[#2a9dab] font-semibold text-sm">Step 4: Calculation</span>
+              <span className="text-[#2a9dab] font-semibold text-sm">Step 4: Combined Uncertainty Calculation</span>
             </div>
-            <div className="mb-2">Combined Standard Uncertainty (Uc): <span className="font-mono">{uc.toFixed(4)} °C</span></div>
-            <div className="mb-2">Effective Degrees of Freedom (Veff): <span className="font-mono">{veffVal === Infinity ? '∞' : veffVal.toFixed(1)}</span></div>
-            <div className="mb-2">Coverage Factor (k): <span className="font-mono">{k}</span></div>
-            <div className="mb-2 font-bold">Expanded Uncertainty (Ue): <span className="font-mono">{ue.toFixed(4)} °C</span></div>
+            
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold mb-2">Uncertainty Components Summary</h4>
+              <div className="grid grid-cols-1 gap-2 text-xs">
+                <div>U1 (Reference Standard) = {u1.toFixed(4)} °C</div>
+                <div>U2 (Repeatability) = {u2.toFixed(4)} °C</div>
+                <div>U3 (Readability) = {u3.toFixed(8)} °C</div>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold mb-2">Combined Standard Uncertainty</h4>
+              <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                <div className="text-xs">
+                  <div>Uc = √[(U1×sc1)² + (U2×sc2)² + (U3×sc3)²]</div>
+                  <div>Uc = √[({u1.toFixed(4)}×{sc1})² + ({u2.toFixed(4)}×{sc2})² + ({u3.toFixed(8)}×{sc3})²]</div>
+                  <div className="font-semibold">Uc = {uc.toFixed(4)} °C</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold mb-2">Effective Degrees of Freedom</h4>
+              <div className="text-xs">
+                <div>Veff = {veffVal === Infinity ? '∞' : veffVal.toFixed(1)}</div>
+                <div>Coverage Factor (k) = {k} (for 95% confidence)</div>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold mb-2">Expanded Uncertainty</h4>
+              <div className="bg-green-50 p-3 rounded border border-green-200">
+                <div className="text-xs">
+                  <div>Ue = k × Uc = {k} × {uc.toFixed(4)}</div>
+                  <div className="font-bold text-lg">Ue = {ue.toFixed(4)} °C</div>
+                </div>
+              </div>
+            </div>
+
             {modernButton({
               onClick: () => {
                 if (!validRepeat) {
@@ -422,48 +789,142 @@ function ThermometerUncertaintyCalculator() {
           <CardSection>
             <div className="flex items-center mb-3">
               <MdInfo className="h-5 w-5 text-[#2a9dab] mr-2" />
-              <span className="text-[#2a9dab] font-semibold text-sm">Step 5: Results</span>
+              <span className="text-[#2a9dab] font-semibold text-sm">Step 5: Final Results & Environment Conditions</span>
             </div>
-            <div className="relative">
-              <h2 className="text-lg font-semibold mb-2">Uncertainty Components</h2>
+            
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold mb-2">Measurement Results</h2>
               <table className="min-w-full border text-sm mb-4">
                 <thead>
                   <tr className="bg-gray-100">
-                    <th className="border px-2 py-1">Source</th>
-                    <th className="border px-2 py-1">Value (ui, °C)</th>
-                    <th className="border px-2 py-1">Distribution</th>
-                    <th className="border px-2 py-1">dfi</th>
-                    <th className="border px-2 py-1">sci</th>
+                    <th className="border px-2 py-1">Standard Reading °C</th>
+                    <th className="border px-2 py-1">UUT Reading °C</th>
+                    <th className="border px-2 py-1">Correction °C</th>
+                    <th className="border px-2 py-1">Uncertainty of Measurement</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {referenceData.map((row, index) => {
+                    // Use the overall calculated uncertainty for all points
+                    return (
+                      <tr key={index}>
+                        <td className="border px-2 py-1 text-center">{row.temp.toFixed(3)}</td>
+                        <td className="border px-2 py-1 text-center">{row.indicated.toFixed(1)}</td>
+                        <td className="border px-2 py-1 text-center">{row.correction.toFixed(3)}</td>
+                        <td className="border px-2 py-1 text-center">{ue.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold mb-2">Final Results</h2>
+              <div className="bg-green-50 p-4 rounded border border-green-200">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>Combined Standard Uncertainty (Uc): <span className="font-mono font-semibold">{uc.toFixed(4)} °C</span></div>
+                  <div>Effective Degrees of Freedom (Veff): <span className="font-mono">{veffVal === Infinity ? '∞' : veffVal.toFixed(1)}</span></div>
+                  <div>Coverage Factor (k): <span className="font-mono">{k}</span></div>
+                  <div className="text-lg font-bold">Expanded Uncertainty (Ue): <span className="font-mono">{ue.toFixed(4)} °C</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold mb-2">Environment Conditions</h2>
+              <table className="min-w-full border text-sm">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border px-2 py-1">Parameter</th>
+                    <th className="border px-2 py-1">Start</th>
+                    <th className="border px-2 py-1">End</th>
+                    <th className="border px-2 py-1">Average</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border px-2 py-1">Reference Standard (U1)</td>
-                    <td className="border px-2 py-1">{u1.toFixed(4)}</td>
-                    <td className="border px-2 py-1">Normal</td>
-                    <td className="border px-2 py-1">∞</td>
-                    <td className="border px-2 py-1">1</td>
+                    <td className="border px-2 py-1">Time</td>
+                    <td className="border px-2 py-1">
+                      {input({
+                        type: 'text',
+                        value: envConditions.startTime,
+                        onChange: e => setEnvConditions({...envConditions, startTime: e.target.value}),
+                        className: 'w-full text-center',
+                      })}
+                    </td>
+                    <td className="border px-2 py-1">
+                      {input({
+                        type: 'text',
+                        value: envConditions.endTime,
+                        onChange: e => setEnvConditions({...envConditions, endTime: e.target.value}),
+                        className: 'w-full text-center',
+                      })}
+                    </td>
+                    <td className="border px-2 py-1 text-center">-</td>
                   </tr>
                   <tr>
-                    <td className="border px-2 py-1">Repeatability (U2)</td>
-                    <td className="border px-2 py-1">{u2.toFixed(4)}</td>
-                    <td className="border px-2 py-1">Normal</td>
-                    <td className="border px-2 py-1">{df2}</td>
-                    <td className="border px-2 py-1">1</td>
+                    <td className="border px-2 py-1">Temperature (°C)</td>
+                    <td className="border px-2 py-1">
+                      {input({
+                        type: 'number',
+                        step: '0.1',
+                        value: envConditions.startTemp,
+                        onChange: e => {
+                          const newTemp = Number(e.target.value);
+                          const avgTemp = (newTemp + envConditions.endTemp) / 2;
+                          setEnvConditions({...envConditions, startTemp: newTemp, avgTemp});
+                        },
+                        className: 'w-full text-center',
+                      })}
+                    </td>
+                    <td className="border px-2 py-1">
+                      {input({
+                        type: 'number',
+                        step: '0.1',
+                        value: envConditions.endTemp,
+                        onChange: e => {
+                          const newTemp = Number(e.target.value);
+                          const avgTemp = (envConditions.startTemp + newTemp) / 2;
+                          setEnvConditions({...envConditions, endTemp: newTemp, avgTemp});
+                        },
+                        className: 'w-full text-center',
+                      })}
+                    </td>
+                    <td className="border px-2 py-1 text-center">{envConditions.avgTemp.toFixed(1)}</td>
                   </tr>
                   <tr>
-                    <td className="border px-2 py-1">Readability (U3)</td>
-                    <td className="border px-2 py-1">{u3.toFixed(4)}</td>
-                    <td className="border px-2 py-1">Rectangular</td>
-                    <td className="border px-2 py-1">∞</td>
-                    <td className="border px-2 py-1">1</td>
+                    <td className="border px-2 py-1">Humidity (% RH)</td>
+                    <td className="border px-2 py-1">
+                      {input({
+                        type: 'number',
+                        step: '0.1',
+                        value: envConditions.startHumidity,
+                        onChange: e => {
+                          const newHumidity = Number(e.target.value);
+                          const avgHumidity = (newHumidity + envConditions.endHumidity) / 2;
+                          setEnvConditions({...envConditions, startHumidity: newHumidity, avgHumidity});
+                        },
+                        className: 'w-full text-center',
+                      })}
+                    </td>
+                    <td className="border px-2 py-1">
+                      {input({
+                        type: 'number',
+                        step: '0.1',
+                        value: envConditions.endHumidity,
+                        onChange: e => {
+                          const newHumidity = Number(e.target.value);
+                          const avgHumidity = (envConditions.startHumidity + newHumidity) / 2;
+                          setEnvConditions({...envConditions, endHumidity: newHumidity, avgHumidity});
+                        },
+                        className: 'w-full text-center',
+                      })}
+                    </td>
+                    <td className="border px-2 py-1 text-center">{envConditions.avgHumidity.toFixed(1)}</td>
                   </tr>
                 </tbody>
               </table>
-              <div className="mb-2">Combined Standard Uncertainty (Uc): <span className="font-mono">{uc.toFixed(4)} °C</span></div>
-              <div className="mb-2">Effective Degrees of Freedom (Veff): <span className="font-mono">{veffVal === Infinity ? '∞' : veffVal.toFixed(1)}</span></div>
-              <div className="mb-2">Coverage Factor (k): <span className="font-mono">{k}</span></div>
-              <div className="mb-2 font-bold">Expanded Uncertainty (Ue): <span className="font-mono">{ue.toFixed(4)} °C</span></div>
             </div>
           </CardSection>
         );
@@ -482,7 +943,7 @@ function ThermometerUncertaintyCalculator() {
     console.log('Auto-saving thermometer calibration progress...');
     
     const inputData = {
-      us, sc1, df1, rg, rd, repeatability, currentStep
+      us, sc1, df1, rg, rd, repeatability, referenceData, envConditions, currentStep
     };
     const resultData = { uc, veffVal, k, ue };
     
@@ -548,7 +1009,11 @@ function ThermometerUncertaintyCalculator() {
       df1: isNaN(df1) || !isFinite(df1) ? 0 : df1,
       rg: isNaN(rg) ? 0 : rg,
       rd: isNaN(rd) ? 0 : rd,
-      repeatability: Array.isArray(repeatability) ? repeatability.map(val => isNaN(val) ? 0 : val) : [],
+      repeatability: Array.isArray(repeatability) ? repeatability.map(testpoint => 
+        Array.isArray(testpoint) ? testpoint.map(val => isNaN(val) ? 0 : val) : []
+      ) : [],
+      referenceData: Array.isArray(referenceData) ? referenceData : [],
+      envConditions: envConditions || {},
       currentStep: currentStep || 1
     };
     
@@ -714,7 +1179,9 @@ function ThermometerUncertaintyCalculator() {
                       df1 !== DEFAULT_DF1 || 
                       rg !== DEFAULT_RG || 
                       rd !== DEFAULT_RD || 
-                      repeatability.some(val => val !== '');
+                      (Array.isArray(repeatability) && repeatability.some(testpoint => 
+                        Array.isArray(testpoint) && testpoint.some(val => val !== '')
+                      ));
     setHasUnsavedChanges(hasChanges);
     setUnsavedChanges(hasChanges);
   }, [us, sc1, df1, rg, rd, repeatability, setUnsavedChanges]);
@@ -724,7 +1191,7 @@ function ThermometerUncertaintyCalculator() {
   
   const { clearBackup } = useAutoSave(
     handleAutoSave,
-    { us, sc1, df1, rg, rd, repeatability, currentStep },
+    { us, sc1, df1, rg, rd, repeatability, referenceData, envConditions, currentStep },
     {
       interval: 10000, // 10 seconds - more frequent saves
       enabled: hasUnsavedChanges,
@@ -741,6 +1208,8 @@ function ThermometerUncertaintyCalculator() {
     if (restoredData.rg !== undefined) setRg(restoredData.rg);
     if (restoredData.rd !== undefined) setRd(restoredData.rd);
     if (restoredData.repeatability) setRepeatability(restoredData.repeatability);
+    if (restoredData.referenceData) setReferenceData(restoredData.referenceData);
+    if (restoredData.envConditions) setEnvConditions(restoredData.envConditions);
     if (restoredData.currentStep) setCurrentStep(restoredData.currentStep);
   }, []);
 
@@ -785,7 +1254,22 @@ function ThermometerUncertaintyCalculator() {
           setDf1(input.df1 ?? DEFAULT_DF1);
           setRg(input.rg ?? DEFAULT_RG);
           setRd(input.rd ?? DEFAULT_RD);
-          setRepeatability(input.repeatability ?? ['', '', '']);
+          setRepeatability(input.repeatability ?? [['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']]);
+          setReferenceData(input.referenceData ?? [
+            { temp: 0.00, indicated: 0.000, correction: 0.000, uncertainty: 0.023 },
+            { temp: 50.00, indicated: 49.000, correction: 1.000, uncertainty: 0.023 },
+            { temp: 100.00, indicated: 98.000, correction: 2.000, uncertainty: 0.023 }
+          ]);
+          setEnvConditions(input.envConditions ?? {
+            startTime: '10:00 AM',
+            endTime: '2:30 PM',
+            startTemp: 24.6,
+            endTemp: 24.3,
+            avgTemp: 24.5,
+            startHumidity: 53.8,
+            endHumidity: 54.2,
+            avgHumidity: 54.0
+          });
           setCurrentStep(input.currentStep || 1);
         }
       }).catch(() => {
@@ -849,8 +1333,10 @@ function ThermometerUncertaintyCalculator() {
                       }
                       // Validation for Step 2: Repeatability
                       if (currentStep === 2) {
-                        if (!validRepeat || repeatability.some(val => val === '' || isNaN(Number(val)))) {
-                          toast.error('Please fill in all repeatability values before proceeding.', {
+                        if (!validRepeat || (Array.isArray(repeatability) && repeatability.some(testpoint => 
+                          Array.isArray(testpoint) && testpoint.some(val => val === '' || isNaN(Number(val)))
+                        ))) {
+                          toast.error('Please fill in all repeatability values for all testpoints before proceeding.', {
                             position: 'top-center',
                             duration: 4000,
                             style: {

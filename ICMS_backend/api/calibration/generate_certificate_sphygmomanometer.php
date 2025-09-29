@@ -359,30 +359,30 @@ foreach ($test_pressures as $index => $pressure) {
     $decreasingReading = '';
     $maxDeviation = '';
     
-    // Use actual calibration data structure from SphygmomanometerCalibration.jsx
-    if (isset($result_data['uutIncMean'][$index]) || isset($result_data['uutDecMean'][$index])) {
-        // Show UUT increasing mean
-        if (isset($result_data['uutIncMean'][$index])) {
-            $increasingReading = number_format(floor($result_data['uutIncMean'][$index] * 100) / 100, 2);
+    // Use actual calibration data structure
+    if (isset($result_data['deviationMmHg'][$index]) || isset($result_data['deviationKPa'][$index])) {
+        // Show deviation in mmHg for increasing column
+        if (isset($result_data['deviationMmHg'][$index])) {
+            $increasingReading = round($result_data['deviationMmHg'][$index], 1);
         }
         
-        // Show UUT decreasing mean
-        if (isset($result_data['uutDecMean'][$index])) {
-            $decreasingReading = number_format(floor($result_data['uutDecMean'][$index] * 100) / 100, 2);
+        // Show deviation in kPa for decreasing column
+        if (isset($result_data['deviationKPa'][$index])) {
+            $decreasingReading = round($result_data['deviationKPa'][$index], 1);
         }
         
         // Calculate maximum deviation from result data
-        if (isset($result_data['maxDeviation'][$index])) {
-            $maxDeviation = number_format(floor($result_data['maxDeviation'][$index] * 100) / 100, 2);
-        } elseif (isset($result_data['maxDeviation']) && is_array($result_data['maxDeviation'])) {
-            $maxDeviation = number_format(floor($result_data['maxDeviation'][$index] * 100) / 100, 2);
+        if (isset($result_data['deviationMmHg'][$index])) {
+            $maxDeviation = round(abs($result_data['deviationMmHg'][$index]), 1);
+        } elseif (isset($result_data['maxDeviation'])) {
+            $maxDeviation = round($result_data['maxDeviation'], 1);
         }
     }
     
     $pdf->Cell(25, 6, $increasingReading, 1, 0, 'C');
     $pdf->Cell(25, 6, $decreasingReading, 1, 0, 'C');
     $pdf->Cell(30, 6, $maxDeviation, 1, 0, 'C');
-    $pdf->Cell(40, 6, 'within +/- 4 mmHg', 1, 1, 'C');
+    $pdf->Cell(40, 6, 'within ± 4 mmHg', 1, 1, 'C');
 }
 
 $pdf->Ln(3);
@@ -400,14 +400,14 @@ $pdf->SetFont('Arial', '', 8);
 $maxHysteresisError = '';
 if (isset($result_data['hysteresisMax'])) {
     if (is_array($result_data['hysteresisMax'])) {
-        $maxHysteresisError = number_format(floor(max($result_data['hysteresisMax']) * 100) / 100, 2) . ' mmHg';
+        $maxHysteresisError = round(max($result_data['hysteresisMax']), 1) . ' mmHg';
     } else {
-        $maxHysteresisError = number_format(floor($result_data['hysteresisMax'] * 100) / 100, 2) . ' mmHg';
+        $maxHysteresisError = round($result_data['hysteresisMax'], 1) . ' mmHg';
     }
 }
 
 $pdf->Cell(85, 6, $maxHysteresisError, 1, 0, 'C');
-$pdf->Cell(70, 6, 'within +/- 4 mmHg', 1, 1, 'C');
+$pdf->Cell(70, 6, 'within ± 4 mmHg', 1, 1, 'C');
 
 $pdf->Ln(3);
 
@@ -442,21 +442,21 @@ foreach ($leakage_pressures as $index => $pressure) {
     $rateOfLoss = '';
     
     if (isset($input_data['lossFirst'][$index]) && isset($input_data['lossAfter5'][$index])) {
-        $firstReading = number_format(floor($input_data['lossFirst'][$index] * 100) / 100, 2);
-        $after5Minutes = number_format(floor($input_data['lossAfter5'][$index] * 100) / 100, 2);
+        $firstReading = $input_data['lossFirst'][$index];
+        $after5Minutes = $input_data['lossAfter5'][$index];
         
         // Calculate rate of pressure loss from result data
         if (isset($result_data['lossRate'][$index])) {
-            $rateOfLoss = number_format(floor($result_data['lossRate'][$index] * 100) / 100, 2) . ' mmHg/min';
+            $rateOfLoss = round($result_data['lossRate'][$index], 1) . ' mmHg/min';
         } elseif (isset($result_data['lossRate']) && is_array($result_data['lossRate'])) {
-            $rateOfLoss = number_format(floor($result_data['lossRate'][$index] * 100) / 100, 2) . ' mmHg/min';
+            $rateOfLoss = round($result_data['lossRate'][$index], 1) . ' mmHg/min';
         }
     }
     
     $pdf->Cell(25, 6, $firstReading, 1, 0, 'C'); // 1st Reading
     $pdf->Cell(25, 6, $after5Minutes, 1, 0, 'C'); // After 5 minutes
     $pdf->Cell(30, 6, $rateOfLoss, 1, 0, 'C'); // Rate of pressure loss
-    $pdf->Cell(40, 6, '<=4.0 mmHg/min', 1, 1, 'C');
+    $pdf->Cell(40, 6, '≤4.0 mmHg/min', 1, 1, 'C');
 }
 
 $pdf->Ln(3);
@@ -467,17 +467,14 @@ $pdf->Cell(0, 5, 'IV. Test for the Rapid Exhaust Valve', 0, 1, 'L');
 $pdf->SetFont('Arial', 'B', 8);
 $pdf->SetX(19); // Align with left margin
 $pdf->Cell(35, 6, 'Applied Pressure (mmHg)', 1, 0, 'C');
-$pdf->Cell(80, 6, 'Time for the Pressure Reduction to reach <= 15 mmHg', 1, 0, 'C');
+$pdf->Cell(80, 6, 'Time for the Pressure Reduction to reach ≤ 15 mmHg', 1, 0, 'C');
 $pdf->Cell(40, 6, 'Maximum Permissible Error', 1, 1, 'C');
 $pdf->SetFont('Arial', '', 8);
 
 // Get rapid exhaust valve test data (if available)
 $exhaustTime = '';
-if (isset($result_data['rapidExhaust']['elapsedSeconds'])) {
-    $exhaustTime = $result_data['rapidExhaust']['elapsedSeconds'] . ' seconds';
-} elseif (isset($input_data['rapidElapsedSeconds'])) {
-    $exhaustTime = $input_data['rapidElapsedSeconds'] . ' seconds';
-}
+// Note: This test might not be implemented in the current calibration process
+// For now, we'll leave it empty as it requires specific test equipment
 
 $pdf->Cell(35, 6, '300', 1, 0, 'C');
 $pdf->Cell(80, 6, $exhaustTime, 1, 0, 'C');
@@ -530,8 +527,8 @@ $pdf->Ln(2);
 $pdf->SetFont('Arial', 'B', 9);
 $pdf->Cell(0, 5, 'Environmental conditions during testing:', 0, 1, 'L');
 $pdf->SetFont('Arial', '', 9);
-$pdf->Cell(50, 5, 'Ambient Temperature (C):', 0, 0, 'L');
-$pdf->Cell(20, 5, '23.0 C', 0, 1, 'L');
+$pdf->Cell(50, 5, 'Ambient Temperature (°C):', 0, 0, 'L');
+$pdf->Cell(20, 5, '23.0 °C', 0, 1, 'L');
 $pdf->Cell(50, 5, 'Relative Humidity (RH):', 0, 0, 'L');
 $pdf->Cell(20, 5, '45 %', 0, 1, 'L');
 $pdf->Ln(2);
@@ -550,21 +547,16 @@ $pdf->Ln(2);
 // Two-column table format
 $pdf->SetFont('Arial', '', 8);
 
-// Fetch standard gauge data from database
-$standard_stmt = $db->prepare('SELECT * FROM standard_gauges WHERE is_active = 1 ORDER BY id DESC LIMIT 1');
-$standard_stmt->execute();
-$standard_gauge = $standard_stmt->fetch(PDO::FETCH_ASSOC);
-
-// Use database data or fallback to default values
+// Standard gauge data (can be made dynamic later when standard_gauges table is created)
 $standard_data = [
-    'Type' => $standard_gauge['type'] ?? 'Digital Pressure Calibrator',
-    'Model/Maker' => $standard_gauge['model_maker'] ?? 'ADT672-05-GP15-BAR-N',
-    'Measurement Range' => $standard_gauge['measurement_range'] ?? '0-1 bar (0-750 mmHg)',
-    'Accuracy (% FS)' => $standard_gauge['accuracy'] ?? '0.05',
-    'Serial No.' => $standard_gauge['serial_no'] ?? '2731706006',
-    'Certificate No.' => $standard_gauge['certificate_no'] ?? '102023-INS-08090',
-    'Traceability' => $standard_gauge['traceability'] ?? 'Metal Industry Research and Development Center',
-    'Calibration Date' => $standard_gauge['calibration_date'] ?? 'Oct-25'
+    'Type' => 'Digital Pressure Calibrator',
+    'Model/Maker' => 'ADT672-05-GP15-BAR-N',
+    'Measurement Range' => '0-1 bar (0-750 mmHg)',
+    'Accuracy (% FS)' => '0.05',
+    'Serial No.' => '2731706006',
+    'Certificate No.' => '102023-INS-08090',
+    'Traceability' => 'Metal Industry Research and Development Center',
+    'Calibration Date' => 'Oct-25'
 ];
 
 foreach ($standard_data as $label => $value) {

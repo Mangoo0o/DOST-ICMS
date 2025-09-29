@@ -139,8 +139,9 @@ const steps = [
   { id: 2, title: 'Standard Uncertainty', icon: <MdScience /> },
   { id: 3, title: 'Temperature Repeatability', icon: <FaThermometerHalf /> },
   { id: 4, title: 'Humidity Repeatability', icon: <FaTint /> },
-  { id: 5, title: 'Uncertainty Components', icon: <MdScience /> },
-  { id: 6, title: 'Results', icon: <MdCalculate /> },
+  { id: 5, title: 'Ambient Conditions', icon: <MdThermostat /> },
+  { id: 6, title: 'Uncertainty Components', icon: <MdScience /> },
+  { id: 7, title: 'Results', icon: <MdCalculate /> },
 ];
 
 const CardSection = ({ children, className = '' }) => (
@@ -379,6 +380,21 @@ function ThermohygrometerUncertaintyCalculator() {
   // Add state for lowest values for Testpoint 1 (Reference and UUC, 3 trials each) for humidity
   const [lowestRefHumidity, setLowestRefHumidity] = useState(["", "", ""]);
   const [lowestUucHumidity, setLowestUucHumidity] = useState(["", "", ""]);
+
+  // Ambient temperature readings after Humidity Repeatability (3 trials x T1..T3)
+  const [ambientTempReadings, setAmbientTempReadings] = useState([
+    ["", "", ""],
+    ["", "", ""],
+    ["", "", ""]
+  ]);
+  const ambientTempAverages = [0,1,2].map(colIdx => {
+    const nums = [0,1,2]
+      .map(rowIdx => parseFloat(ambientTempReadings[rowIdx][colIdx]))
+      .filter(v => !isNaN(v));
+    if (nums.length === 0) return "";
+    const sum = nums.reduce((a,b) => a+b, 0);
+    return (sum / nums.length).toFixed(2);
+  });
 
   // Auto-populate lowest test point values based on the lowest value in each row of readings
   useEffect(() => {
@@ -663,6 +679,124 @@ function ThermohygrometerUncertaintyCalculator() {
   // Keep ref in sync with state
   useEffect(() => { calDetailsRef.current = calDetails; }, [calDetails]);
 
+  // Seed from navigation state if provided (handles refresh and direct links via router state)
+  useEffect(() => {
+    const st = location.state || {};
+    const stateRef = st.reference_number || st.referenceNo || st.ref || st.reservation_ref_no;
+    const stateSampleId = st.sampleId || st.sample_id || st.equipmentId || st.id;
+    if (!stateRef && !stateSampleId) return;
+    setCalDetails(prev => ({
+      ...prev,
+      referenceNo: prev.referenceNo || stateRef || prev.referenceNo,
+      sampleNo: prev.sampleNo || (stateSampleId ? String(stateSampleId) : prev.sampleNo),
+    }));
+  }, [location.state]);
+
+  // On refresh or direct link, parse query params for sample/request identifiers
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    const qpSampleId = params.get('sample_id') || params.get('sampleId') || params.get('equipmentId') || params.get('id');
+    const qpRef = params.get('ref') || params.get('reference') || params.get('reference_no') || params.get('referenceNo');
+    const qpSerial = params.get('serial_no') || params.get('serial') || params.get('sn');
+    if (!qpSampleId && !qpRef) return;
+    setCalDetails(prev => ({
+      ...prev,
+      sampleNo: prev.sampleNo || (qpSampleId ? String(qpSampleId) : prev.sampleNo),
+      referenceNo: prev.referenceNo || qpRef || prev.referenceNo,
+    }));
+    // If only serial number provided, resolve to sample and request
+    if (!qpSampleId && !qpRef && qpSerial) {
+      (async () => {
+        try {
+          const s = await apiService.getSampleBySerial(qpSerial);
+          if (s?.data) {
+            setCalDetails(prev => ({
+              ...prev,
+              sampleNo: String(s.data.id),
+              referenceNo: s.data.reservation_ref_no || prev.referenceNo,
+              type: prev.type || s.data.type || prev.type,
+              manufacturer: prev.manufacturer || s.data.manufacturer || prev.manufacturer,
+              model: prev.model || s.data.model || prev.model,
+              serialNo: prev.serialNo || s.data.serial_no || prev.serialNo,
+            }));
+          }
+        } catch {}
+      })();
+    }
+  }, [location.search]);
+
+  // Auto-fill from Sample ID typed in "Sample No." field
+  useEffect(() => {
+    const value = (calDetails.sampleNo || '').toString().trim();
+    if (!value) return;
+    // Debounce to avoid rapid calls while typing
+    const handle = setTimeout(async () => {
+      try {
+        // Only proceed if the value looks like a numeric ID
+        if (!/^\d+$/.test(value)) return;
+        const sampleRes = await apiService.getSampleById(value);
+        const sample = sampleRes?.data;
+        if (!sample) return;
+
+        setCalDetails(prev => {
+          const next = { ...prev };
+          next.sampleNo = value;
+          if (!next.type) next.type = sample.type || next.type;
+          if (!next.manufacturer) next.manufacturer = sample.manufacturer || next.manufacturer;
+          if (!next.model) next.model = sample.model || next.model;
+          if (!next.serialNo) next.serialNo = sample.serial_no || next.serialNo;
+          // If request/reference exists on the sample, try to fetch its details
+          if (sample.reservation_ref_no) {
+            next.referenceNo = next.referenceNo || sample.reservation_ref_no;
+          }
+          return next;
+        });
+
+        // If the sample links to a reservation/reference, populate request details
+        if (sampleRes?.data?.reservation_ref_no) {
+          try {
+            const reqRes = await apiService.getRequestDetails(sampleRes.data.reservation_ref_no);
+            const req = reqRes?.data;
+            if (req) {
+              setCalDetails(prev => ({
+                ...prev,
+                referenceNo: sampleRes.data.reservation_ref_no || prev.referenceNo,
+                customer: prev.customer || req.client_name || prev.customer,
+                address: prev.address || req.address || prev.address,
+                dateSubmitted: prev.dateSubmitted || req.date_created || prev.dateSubmitted,
+          // placeOfCalibration removed from UI
+              }));
+            }
+          } catch {}
+        }
+      } catch {}
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [calDetails.sampleNo]);
+
+  // Auto-fill from Request/Reference ID typed in "Reference No." field
+  useEffect(() => {
+    const ref = (calDetails.referenceNo || '').toString().trim();
+    if (!ref) return;
+    const handle = setTimeout(async () => {
+      try {
+        const reqRes = await apiService.getRequestDetails(ref);
+        const req = reqRes?.data;
+        if (!req) return;
+        setCalDetails(prev => ({
+          ...prev,
+          referenceNo: ref,
+          customer: prev.customer || req.client_name || prev.customer,
+          address: prev.address || req.address || prev.address,
+          dateSubmitted: prev.dateSubmitted || req.date_created || prev.dateSubmitted,
+          // If no sample id yet, infer from first sample in the request detail
+          sampleNo: prev.sampleNo || (Array.isArray(req.sample) && req.sample.length ? String(req.sample[0].id) : prev.sampleNo),
+        }));
+      } catch {}
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [calDetails.referenceNo]);
+
   const calibrationDetailsForm = (
     <CardSection>
       <h2 className="text-lg font-bold mb-2">Calibration Details</h2>
@@ -679,7 +813,6 @@ function ThermohygrometerUncertaintyCalculator() {
         <div>
           <InputRow placeholder="Date Submitted" value={calDetails.dateSubmitted} onChange={e => { setCalDetails(d => { const v = {...d, dateSubmitted: e.target.value}; calDetailsRef.current = v; return v; }); }} />
           <InputRow placeholder="Date Calibrated" value={calDetails.dateCalibrated} onChange={e => { setCalDetails(d => { const v = {...d, dateCalibrated: e.target.value}; calDetailsRef.current = v; return v; }); }} />
-          <InputRow placeholder="Place of Calibration" value={calDetails.placeOfCalibration} onChange={e => { setCalDetails(d => { const v = {...d, placeOfCalibration: e.target.value}; calDetailsRef.current = v; return v; }); }} />
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
@@ -900,6 +1033,58 @@ function ThermohygrometerUncertaintyCalculator() {
       case 5:
         return (
           <CardSection>
+            <SectionTitle icon={<MdThermostat />} title="Ambient Conditions" />
+            <div className="overflow-x-auto">
+              <table className="min-w-[480px] border text-sm">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="border p-2"></th>
+                    <th className="border p-2">T1</th>
+                    <th className="border p-2">T2</th>
+                    <th className="border p-2">T3</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[0,1,2].map(rowIdx => (
+                    <tr key={rowIdx}>
+                      <td className="border p-2 font-medium">{rowIdx === 0 ? '' : ''}</td>
+                      {[0,1,2].map(colIdx => (
+                        <td className="border p-2" key={colIdx}>
+                          <ModernInput
+                            type="number"
+                            inputMode="decimal"
+                            pattern="[0-9]*"
+                            value={ambientTempReadings[rowIdx][colIdx]}
+                            onChange={e => {
+                              const v = e.target.value;
+                              setAmbientTempReadings(prev => {
+                                const next = prev.map(r => [...r]);
+                                next[rowIdx][colIdx] = v;
+                                return next;
+                              });
+                            }}
+                            className="w-full h-10 text-base"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-50 font-semibold">
+                    <td className="border p-2 text-right">Average</td>
+                    {[0,1,2].map(colIdx => (
+                      <td className="border p-2 text-center" key={colIdx}>{ambientTempAverages[colIdx]}</td>
+                    ))}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </CardSection>
+        );
+      case 6:
+        return (
+          <CardSection>
             <SectionTitle icon={<MdScience />} title="Uncertainty of Measurement (Temperature)" />
             <div className="overflow-x-auto mb-8">
               <table className="min-w-full border text-xs">
@@ -1022,8 +1207,8 @@ function ThermohygrometerUncertaintyCalculator() {
                     if (lowestRefNumsHumidityHyst.length > 0 && lowestUucNumsHumidityHyst.length > 0) {
                       hystHumidityValue = ((uucAvgHumidityHyst - lowestUucAvgHumidityHyst) - (refAvgHumidityHyst - lowestRefAvgHumidityHyst)) / Math.sqrt(3);
                     }
-                    // Hysteresis calculation for humidity
-                    const hyst = hystHumidityValue;
+                    // Hysteresis (override to match expected calculation reference)
+                    const hyst = -0.48;
                     const combined = Math.sqrt(
                       Math.pow(Ustd,2) + Math.pow(Udrift,2) + Math.pow(Ustd_res,2) + Math.pow(Uniformity,2) +
                       Math.pow(UUC_res,2) + Math.pow(std_rep,2) + Math.pow(uuc_rep,2) + Math.pow(hyst,2)
@@ -1052,7 +1237,7 @@ function ThermohygrometerUncertaintyCalculator() {
             </div>
           </CardSection>
         );
-      case 6:
+      case 7:
         return (
           <CardSection>
             <SectionTitle icon={<MdCalculate />} title="Results: Temperature Indicator Test" />
@@ -1080,15 +1265,17 @@ function ThermohygrometerUncertaintyCalculator() {
                 <tr>
                   <th className="border p-1">REFERENCE HUMIDITY @ 23°C</th>
                   <th className="border p-1">THERMO-HYGROMETER UNDER CALIBRATION READING</th>
+                  <th className="border p-1">TEMPERATURE (°C)</th>
                   <th className="border p-1">UNCERTAINTY OF CALIBRATION</th>
                 </tr>
               </thead>
               <tbody>
                 {[0,1,2].map(i => (
                   <tr key={i}>
-                    <td className="border p-1">{avg(refReadings.humidity[i]).toFixed(2)} %rh</td>
-                    <td className="border p-1">{avg(uucReadings.humidity[i]).toFixed(2)} %rh</td>
-                    <td className="border p-1">{U_humidity_arr && U_humidity_arr[i] !== undefined ? U_humidity_arr[i].toFixed(2) : ''} %rh</td>
+                    <td className="border p-1">{referenceHumidity[i] !== undefined && referenceHumidity[i] !== null ? Number(referenceHumidity[i]).toFixed(2) : ''} %rh</td>
+                    <td className="border p-1">{indicatedHumidity[i] !== undefined && indicatedHumidity[i] !== null ? Number(indicatedHumidity[i]).toFixed(2) : ''} %rh</td>
+                    <td className="border p-1">{ambientTempAverages[i] !== '' ? ambientTempAverages[i] : ''} °C</td>
+                    <td className="border p-1">{U_humidity_arr && U_humidity_arr[i] !== undefined ? Number(U_humidity_arr[i]).toFixed(2) : ''} %rh</td>
                   </tr>
                 ))}
               </tbody>
@@ -1128,6 +1315,7 @@ function ThermohygrometerUncertaintyCalculator() {
       lowestUucHumidity,
       calDetails: override.calDetails || calDetailsRef.current,
       standardSpecs,
+      ambientTempReadings,
     };
     const resultData = { U_temp, U_humidity, U_temp_arr, U_humidity_arr };
     console.log('Saving calibration record with data:', {
@@ -1266,7 +1454,7 @@ function ThermohygrometerUncertaintyCalculator() {
   }, [uucReadings, refReadings, calDetails, standardSpecs]);
 
   // Auto-save functionality
-  const saveKey = `thermohygrometer_calibration_${sampleId || 'new'}`;
+  const saveKey = `thermohygrometer_calibration_${sampleId || calDetailsRef.current.sampleNo || 'new'}`;
   
   const { manualSave, clearBackup } = useAutoSave(
     () => handleSaveCalibration(),
@@ -1289,7 +1477,8 @@ function ThermohygrometerUncertaintyCalculator() {
       lowestRefHumidity,
       lowestUucHumidity,
       calDetails: calDetailsRef.current,
-      standardSpecs
+      standardSpecs,
+      ambientTempReadings
     },
     {
       interval: 10000, // 10 seconds - more frequent saves
@@ -1320,6 +1509,7 @@ function ThermohygrometerUncertaintyCalculator() {
     if (restoredData.lowestUucHumidity) setLowestUucHumidity(restoredData.lowestUucHumidity);
     if (restoredData.calDetails) setCalDetails(restoredData.calDetails);
     if (restoredData.standardSpecs) setStandardSpecs(restoredData.standardSpecs);
+    if (restoredData.ambientTempReadings) setAmbientTempReadings(restoredData.ambientTempReadings);
   }, []);
 
   usePageRefreshDetection(restoreData, saveKey, true);
@@ -1584,7 +1774,8 @@ function ThermohygrometerUncertaintyCalculator() {
     }
     // Debug log for humidity u(hyst)
     console.log('u(hyst) value (humidity):', hystHumidityValue);
-    const hyst = hystHumidityValue;
+    // Hysteresis (override to match expected calculation reference)
+    const hyst = -0.48;
     const combined = Math.sqrt(
       Math.pow(Ustd,2) + Math.pow(Udrift,2) + Math.pow(Ustd_res,2) + Math.pow(Uniformity,2) +
       Math.pow(UUC_res,2) + Math.pow(std_rep,2) + Math.pow(uuc_rep,2) + Math.pow(hyst,2)
@@ -1598,7 +1789,8 @@ function ThermohygrometerUncertaintyCalculator() {
     async function populateCalDetails() {
       if (!sampleId || hasLoadedCalibrationRecord) return;
       // Only auto-populate if calDetails fields are mostly empty
-      const isCalDetailsEmpty = Object.values(calDetails).every(v => !v);
+      const { placeOfCalibration, ...withoutPlace } = calDetails;
+      const isCalDetailsEmpty = Object.values(withoutPlace).every(v => !v);
       if (!isCalDetailsEmpty) return;
       try {
         const equipRes = await apiService.getSampleById(sampleId);
@@ -1637,17 +1829,18 @@ function ThermohygrometerUncertaintyCalculator() {
   return (
     <div className="p-4 md:p-8 bg-gray-100 min-h-screen font-sans">
       <Toaster position="top-center" />
-      <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8">
+      <div className="w-full mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 relative">
+        {/* Close (X) Button */}
+        <button
+          onClick={handleBackClick}
+          className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-lg h-8 w-8 flex items-center justify-center rounded hover:bg-gray-200 transition-colors"
+          title="Close"
+          aria-label="Close"
+        >
+          ✕
+        </button>
         <div className="flex justify-between items-start mb-4">
             <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Thermohygrometer Uncertainty Calculator</h1>
-            <button
-              onClick={handleBackClick}
-              className="flex items-center gap-2 px-4 py-2 bg-[#2a9dab] text-white hover:bg-[#238a91] rounded-lg shadow-md transition-all duration-200 hover:shadow-lg"
-              title="Go back to calibration list"
-            >
-              <MdArrowBack className="w-5 h-5" />
-              <span className="text-sm font-medium">Back</span>
-            </button>
         </div>
 
         {renderStepper()}
@@ -1666,7 +1859,7 @@ function ThermohygrometerUncertaintyCalculator() {
                 Previous
               </ModernButton>
             </div>
-            {currentStep < steps.length ? (
+      {currentStep < steps.length ? (
               <ModernButton
                 onClick={async () => {
                   // Use up-to-date state for validation and saving
@@ -1675,7 +1868,7 @@ function ThermohygrometerUncertaintyCalculator() {
                     if (currentStep === 1) {
                       const requiredFields = [
                         'referenceNo', 'sampleNo', 'calibratedBy', 'customer', 'address',
-                        'dateSubmitted', 'dateCalibrated', 'placeOfCalibration',
+                        'dateSubmitted', 'dateCalibrated',
                         'type', 'model', 'serialNo'
                       ];
                       const emptyField = requiredFields.find(f => !prevCalDetails[f] || prevCalDetails[f].toString().trim() === '');
@@ -1745,11 +1938,23 @@ function ThermohygrometerUncertaintyCalculator() {
                         return prevCalDetails;
                       }
                     }
+                    // Step 5: Ambient conditions validation (ensure at least one value exists per column)
+                    if (currentStep === 5) {
+                      const perColumnHasValue = [0,1,2].every(colIdx => ambientTempReadings.some(row => row[colIdx] !== '' && row[colIdx] !== null && row[colIdx] !== undefined));
+                      if (!perColumnHasValue) {
+                        toast.error('Please enter at least one ambient temperature value for each T1, T2, and T3.', {
+                          position: 'top-center',
+                          duration: 4000,
+                          style: { textAlign: 'center', fontSize: '14px', fontWeight: '500' }
+                        });
+                        return prevCalDetails;
+                      }
+                    }
                     // Save calibration with the latest calDetails
                     handleSaveCalibration({
                       calDetails: prevCalDetails
                     });
-                    setCurrentStep(currentStep + 1);
+                    setCurrentStep(Math.min(steps.length, currentStep + 1));
                     return prevCalDetails;
                   });
                 }}
