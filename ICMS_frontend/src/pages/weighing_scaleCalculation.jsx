@@ -153,6 +153,12 @@ const CardSection = ({ children, className = '' }) => (
   </div>
 );
 
+const clampStep = (step) => {
+  const numeric = Number(step);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.min(7, Math.max(1, numeric));
+};
+
 const modernInput = (props) => {
   const { handleKeyDown: navigationHandler } = useInputNavigation();
 
@@ -256,9 +262,25 @@ function WeighingScaleCalculation() {
           weightType: eq.weight_type || '',
           weightCertNo: eq.weight_cert_no || '',
           weightLastCal: eq.weight_last_cal || '',
+          // Auto-fill certificate info using sample/request references
+          referenceNo: eq.reservation_ref_no || '',
+          sampleNo: eq.id ? String(eq.id) : '',
         }));
         setSampleId(eq.id || null);
         setSampleDataLoaded(true);
+        // If the sample is linked to a reservation/reference, fetch request details
+        if (eq && eq.reservation_ref_no) {
+          apiService.getRequestDetails(eq.reservation_ref_no).then(r => {
+            const req = r?.data || {};
+            setEquipment(prev => ({
+              ...prev,
+              customerName: prev.customerName || req.client_name || '',
+              customerAddress: prev.customerAddress || req.address || '',
+              referenceNo: prev.referenceNo || eq.reservation_ref_no || '',
+              dateSubmitted: prev.dateSubmitted || req.date_created || '',
+            }));
+          }).catch(() => {});
+        }
       });
     } else if (passedSerialNumber) {
       // Only fetch by serial if no ID is passed
@@ -279,9 +301,25 @@ function WeighingScaleCalculation() {
           weightType: eq.weight_type || '',
           weightCertNo: eq.weight_cert_no || '',
           weightLastCal: eq.weight_last_cal || '',
+          // Auto-fill certificate info using sample/request references
+          referenceNo: eq.reservation_ref_no || '',
+          sampleNo: eq.id ? String(eq.id) : '',
         }));
         setSampleId(eq.id || null);
         setSampleDataLoaded(true);
+        // If the sample is linked to a reservation/reference, fetch request details
+        if (eq && eq.reservation_ref_no) {
+          apiService.getRequestDetails(eq.reservation_ref_no).then(r => {
+            const req = r?.data || {};
+            setEquipment(prev => ({
+              ...prev,
+              customerName: prev.customerName || req.client_name || '',
+              customerAddress: prev.customerAddress || req.address || '',
+              referenceNo: prev.referenceNo || eq.reservation_ref_no || '',
+              dateSubmitted: prev.dateSubmitted || req.date_created || '',
+            }));
+          }).catch(() => {});
+        }
       });
     } else {
       // No equipment ID or serial number, enable auto-save immediately
@@ -316,7 +354,7 @@ function WeighingScaleCalculation() {
             { position: 'Center 2', indication: '' },
           ]);
           setRepeatabilityReadings(input.repeatabilityReadings || Array(10).fill(''));
-          setCurrentStep(input.currentStep || 1);
+          setCurrentStep(clampStep(input.currentStep || 1));
         }
       }).catch((err) => {
         // Log unexpected errors
@@ -474,10 +512,6 @@ const u_rep_all = stddevRepeat;
     let Imax_row = 0;
     if (idx < 4) {
       const ind = parseFloat(eccRows[cornerIndices[idx]]?.indication);
-      Imax_row = isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(Math.abs(ind - centerIndication));
-    let Imax_row = 0;
-    if (idx < 4) {
-      const ind = parseFloat(eccRows[cornerIndices[idx]]?.indication);
       Imax_row = isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(ind - centerIndication);
     } else {
       Imax_row = maxImax;
@@ -624,87 +658,10 @@ const u_rep_all = stddevRepeat;
               <MdOutlineDeviceHub className="h-5 w-5 text-[#2a9dab] mr-2" />
               <span className="text-[#2a9dab] font-semibold text-sm">Step 1: Equipment & Environmental Conditions</span>
             </div>
-            {/* Certificate Information */}
-            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <h3 className="text-sm font-semibold text-blue-800 mb-3">Certificate Information</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Customer Name:</label>
-                  {modernInput({
-                    name: 'customerName',
-                    value: equipment.customerName,
-                    onChange: handleEquipmentChange,
-                    placeholder: 'e.g. MW RICE & SHINE',
-                  })}
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Customer Address:</label>
-                  {modernInput({
-                    name: 'customerAddress',
-                    value: equipment.customerAddress,
-                    onChange: handleEquipmentChange,
-                    placeholder: 'e.g. Catbangen, San Fernando City, La Union',
-                  })}
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Reference No.:</label>
-                  {modernInput({
-                    name: 'referenceNo',
-                    value: equipment.referenceNo,
-                    onChange: handleEquipmentChange,
-                    placeholder: 'e.g. RI-072025-MET-0669',
-                  })}
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Sample No.:</label>
-                  {modernInput({
-                    name: 'sampleNo',
-                    value: equipment.sampleNo,
-                    onChange: handleEquipmentChange,
-                    placeholder: 'e.g. RI-072025',
-                  })}
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Date Submitted:</label>
-                  {modernInput({
-                    name: 'dateSubmitted',
-                    value: equipment.dateSubmitted,
-                    onChange: handleEquipmentChange,
-                    type: 'date',
-                    placeholder: 'Date submitted',
-                  })}
-                </div>
-              </div>
-            </div>
+            {/* Certificate Information hidden to save space (data still auto-populated in state) */}
             
             
-            </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Customer Address:</label>
-                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
-                    {equipment.customerAddress || 'Loading...'}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Reference No.:</label>
-                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
-                    {equipment.referenceNo || 'Loading...'}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Sample No.:</label>
-                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
-                    {equipment.sampleNo || 'Loading...'}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date Submitted:</label>
-                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
-                    {equipment.dateSubmitted || 'Loading...'}
-                  </div>
-                </div>
-              </div>
-            </div>
+            
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -1122,29 +1079,7 @@ const u_rep_all = stddevRepeat;
                         return isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(Math.abs(ind - centerIndication));
                       }));
                     }
-                    // Eccentricity set to 0 and excluded from calculations
-                    const u_ecc_row_budget = 0;
-                    const u_round0_row_budget = d_row_budget / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
-                    const u_round1_row_budget = d_row_budget / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
-                    // Use maxImax for all rows (consistent with Excel formula)
-                    // Eccentricity uncertainty: (FirstLinearityIndication × Imax) / (2 × BiggestNominalValue × √3)
-                    const firstLinearityIndicationBudget = parseFloat(linearityResults[0]?.indication) || 0;
-                    const u_ecc_row_budget = (firstLinearityIndicationBudget * Imax_row_budget) / (2 * biggestNominalValue * Math.sqrt(3));
-                    // Calculate per-row Imax for eccentricity (Excel: each row has its own value)
-                    let Imax_row_budget = 0;
-                    if (idx < 4) {
-                      // Use the corresponding corner
-                      const ind = parseFloat(eccRows[cornerIndices[idx]]?.indication);
-                      Imax_row_budget = isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(ind - centerIndication);
-                    } else {
-                      // Use the max of all corners
-                      Imax_row_budget = Math.max(...cornerIndices.map(i => {
-                        const ind = parseFloat(eccRows[i]?.indication);
-                        return isNaN(centerIndication) || isNaN(ind) ? 0 : Math.abs(ind - centerIndication);
-                      }));
-                    }
-                    // Eccentricity set to 0 and excluded from calculations
-                    const u_ecc_row_budget = 0;
+                    // Eccentricity excluded from calculations in this budget section
                     // Use the same repeatability value for all rows (Excel logic)
                     const u_rep_row_budget = u_rep_all;
                     const u_components_row_budget = [u_ref_row_budget, u_air_row_budget, u_drift_row_budget, u_conv_row_budget, u_round0_row_budget, u_round1_row_budget, u_rep_row_budget];
@@ -1271,7 +1206,11 @@ const u_rep_all = stddevRepeat;
           </CardSection>
         );
       default:
-        return null;
+        return (
+          <CardSection>
+            <div className="text-sm text-red-600">Unknown step: {String(currentStep)}. Please navigate using the Previous/Next buttons.</div>
+          </CardSection>
+        );
     }
   };
 
@@ -1642,7 +1581,7 @@ const u_rep_all = stddevRepeat;
       setLinearityResults(restoredData.linearityResults);
     }
     if (restoredData.currentStep) {
-      setCurrentStep(restoredData.currentStep);
+      setCurrentStep(clampStep(restoredData.currentStep));
     }
   }, []);
 
@@ -1793,10 +1732,11 @@ const u_rep_all = stddevRepeat;
           </div>
           {renderStepper()}
           <div className="rounded-lg border p-3 bg-white shadow-sm border-blue-100">
+            <div className="text-xs text-gray-500 mb-2">Debug currentStep: {currentStep}</div>
             {renderStepContent()}
             <div className="flex justify-between mt-4 pt-3 border-t">
               {modernButton({
-                onClick: () => setCurrentStep(Math.max(1, currentStep - 1)),
+                onClick: () => setCurrentStep((s) => clampStep(s - 1)),
                 disabled: currentStep === 1,
                 variant: 'secondary',
                 children: 'Previous',
@@ -1978,7 +1918,7 @@ const u_rep_all = stddevRepeat;
                     if (ok) {
                       toast.success('Progress saved.');
                       setShowNextConfirm(false);
-                      setCurrentStep((s) => Math.min(7, s + 1));
+                      setCurrentStep((s) => clampStep(s + 1));
                     } else {
                       toast.error('Failed to save progress.');
                     }
@@ -1998,5 +1938,4 @@ const u_rep_all = stddevRepeat;
     </div>
   );
 }
-
 export default WeighingScaleCalculation;

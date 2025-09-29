@@ -1265,6 +1265,7 @@ function ThermohygrometerUncertaintyCalculator() {
                 <tr>
                   <th className="border p-1">REFERENCE HUMIDITY @ 23°C</th>
                   <th className="border p-1">THERMO-HYGROMETER UNDER CALIBRATION READING</th>
+                  <th className="border p-1">TEMPERATURE (°C)</th>
                   <th className="border p-1">UNCERTAINTY OF CALIBRATION</th>
                 </tr>
               </thead>
@@ -1273,6 +1274,7 @@ function ThermohygrometerUncertaintyCalculator() {
                   <tr key={i}>
                     <td className="border p-1">{referenceHumidity[i] !== undefined && referenceHumidity[i] !== null ? Number(referenceHumidity[i]).toFixed(2) : ''} %rh</td>
                     <td className="border p-1">{indicatedHumidity[i] !== undefined && indicatedHumidity[i] !== null ? Number(indicatedHumidity[i]).toFixed(2) : ''} %rh</td>
+                    <td className="border p-1">{ambientTempAverages[i] !== '' ? ambientTempAverages[i] : ''} °C</td>
                     <td className="border p-1">{U_humidity_arr && U_humidity_arr[i] !== undefined ? Number(U_humidity_arr[i]).toFixed(2) : ''} %rh</td>
                   </tr>
                 ))}
