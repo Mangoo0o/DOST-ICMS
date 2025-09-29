@@ -1877,7 +1877,7 @@ function getStatusText(status) {
 
 function formatValue(value) {
   if (value === null || value === undefined) return <span className="text-gray-400">N/A</span>;
-  if (typeof value === 'number') return value.toFixed(4);
+  if (typeof value === 'number') return (Math.floor(value * 100) / 100).toFixed(2);
   if (Array.isArray(value)) {
     // Compact table for array of objects
     if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && !Array.isArray(value[0])) {
@@ -1907,7 +1907,7 @@ function formatValue(value) {
     return (
       <ul className="list-disc pl-4 text-xs">
         {value.map((v, i) => (
-          <li key={i}>{typeof v === 'number' ? v.toFixed(4) : formatValue(v)}</li>
+          <li key={i}>{typeof v === 'number' ? (Math.floor(v * 100) / 100).toFixed(2) : formatValue(v)}</li>
         ))}
       </ul>
     );
@@ -2179,43 +2179,87 @@ function renderCombinedTable(inputData, resultData, calibrationType, calibRecord
   }
   
   if (calibrationType === 'Sphygmomanometer' && (inputObj || resultObj)) {
-    // Sphygmomanometer specific display - show only necessary report data
+    // Sphygmomanometer specific display - show detailed results like the calibration page
     return (
       <div className="space-y-6">
-        {/* Calibration Summary */}
+        {/* Calibration Summary - Detailed Results Format */}
         <div>
           <h3 className="font-semibold mb-3 text-[#2a9dab]">Calibration Summary</h3>
-          <div className="overflow-x-auto mb-4">
-            <table className="w-full border text-xs mb-2">
-              <thead>
-                <tr className="bg-gray-100">
-                  <th className="border px-2 py-1">Parameter</th>
-                  <th className="border px-2 py-1">Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="border px-2 py-1">Reference No</td>
-                  <td className="border px-2 py-1">{formatValue(inputObj?.calDetails?.referenceNo || resultObj?.referenceNo)}</td>
-                </tr>
-                <tr>
-                  <td className="border px-2 py-1">Sample No</td>
-                  <td className="border px-2 py-1">{formatValue(inputObj?.calDetails?.sampleNo || resultObj?.sampleNo)}</td>
-                </tr>
-                <tr>
-                  <td className="border px-2 py-1">Serial No</td>
-                  <td className="border px-2 py-1">{formatValue(inputObj?.calDetails?.serialNo || resultObj?.serialNo)}</td>
-                </tr>
-                <tr>
-                  <td className="border px-2 py-1">Customer</td>
-                  <td className="border px-2 py-1">{formatValue(inputObj?.calDetails?.customer || resultObj?.customer)}</td>
-                </tr>
-                <tr>
-                  <td className="border px-2 py-1">Date Calibrated</td>
-                  <td className="border px-2 py-1">{formatValue(inputObj?.calDetails?.dateCalibrated || resultObj?.dateCalibrated)}</td>
-                </tr>
-              </tbody>
-            </table>
+          
+          {/* Detailed Results Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            {/* Maximum Deviation Table */}
+            <div className="space-y-4">
+              <div className="font-semibold mb-1">I. Maximum Deviation</div>
+              <div className="text-xs text-gray-600 mb-2">Per applied pressure: UUT increasing/decreasing vs IPRT, and maximum permissible error (± 4 mmHg).</div>
+              <div className="overflow-x-auto">
+                <table className="w-full border text-xs">
+                  <thead>
+                    <tr>
+                      <th className="border p-1">Applied (mmHg)</th>
+                      <th className="border p-1">UUT Inc Mean</th>
+                      <th className="border p-1">UUT Dec Mean</th>
+                      <th className="border p-1">Max Deviation (mmHg)</th>
+                      <th className="border p-1">Max Permissible</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[0, 50, 100, 150, 200, 250, 300].map((pressure, i) => (
+                      <tr key={`dev-${pressure}`}>
+                        <td className="border p-1 text-center">{pressure}</td>
+                        <td className="border p-1 text-center">{formatValue(resultObj?.uutIncMean?.[i])}</td>
+                        <td className="border p-1 text-center">{formatValue(resultObj?.uutDecMean?.[i])}</td>
+                        <td className="border p-1 text-center">{formatValue(resultObj?.maxDeviation?.[i])}</td>
+                        <td className="border p-1 text-center whitespace-nowrap">within ± 4 mmHg</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Air Leakage Test Table */}
+            <div className="space-y-4">
+              <div className="font-semibold mb-1">III. Test for Air Leakage of the Pneumatic System</div>
+              <div className="text-xs text-gray-600 mb-2">Pressure loss test over 5-minute period with maximum permissible rate.</div>
+              <div className="overflow-x-auto">
+                <table className="w-full border text-xs">
+                  <thead>
+                    <tr>
+                      <th className="border p-1">Applied (mmHg)</th>
+                      <th className="border p-1">1st Reading</th>
+                      <th className="border p-1">After 5 min</th>
+                      <th className="border p-1">Rate (mmHg/min)</th>
+                      <th className="border p-1">Max Permissible Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[60, 120, 180, 240, 300].map((pressure, i) => (
+                      <tr key={`air-${pressure}`}>
+                        <td className="border p-1 text-center">{pressure}</td>
+                        <td className="border p-1 text-center">{formatValue(inputObj?.lossFirst?.[i])}</td>
+                        <td className="border p-1 text-center">{formatValue(inputObj?.lossAfter5?.[i])}</td>
+                        <td className="border p-1 text-center">{formatValue(resultObj?.lossRate?.[i])}</td>
+                        <td className="border p-1 text-center">≤4.0 mmHg/min</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Hysteresis Error */}
+            <div className="md:col-span-2">
+              <div className="font-semibold mb-1">II. Test for Hysteresis Error</div>
+              <div className="text-xs text-gray-600 mb-1">Maximum hysteresis error (mmHg) across pressure points. Limit: within ± 4 mmHg.</div>
+              <div className="text-sm">Maximum Hysteresis Error: {formatValue(Math.max(...(resultObj?.hysteresisMax || []).filter(v => v !== '')))} (limit: within ± 4 mmHg)</div>
+            </div>
+
+            {/* Rapid Exhaust Valve Test */}
+            <div className="md:col-span-2">
+              <div className="font-semibold mb-1">Rapid Exhaust Valve Test</div>
+              <div className="text-sm">Drop from 300 ≤15 mmHg in {'<'} 10 s: {formatValue(resultObj?.rapidExhaust?.result) || 'PASS'}</div>
+            </div>
           </div>
         </div>
 

@@ -12,6 +12,7 @@ import testWeights from '../data/test_weights.json';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { useBackNavigation } from '../hooks/useBackNavigation';
 import { useAutoSave, usePageRefreshDetection } from '../hooks/useAutoSave';
+import { notificationService } from '../services/notificationService';
 
 // Custom hook for input navigation
 const useInputNavigation = () => {
@@ -1536,7 +1537,10 @@ const u_rep_all = stddevRepeat;
       setHasUnsavedChanges(false);
       
       // Trigger notification update for clients
-      window.dispatchEvent(new CustomEvent('calibration-completed'));
+      notificationService.notifyCalibrationComplete(reservationRefNo, {
+        equipmentType: 'Weighing Scale',
+        calibrationData: saveData
+      });
       
       return true; // Return true on success
     } catch (e) {
@@ -1668,7 +1672,10 @@ const u_rep_all = stddevRepeat;
       toast.success('Equipment status set to completed. Request will be automatically completed when all samples are finished.');
       
       // Trigger notification update for clients
-      window.dispatchEvent(new CustomEvent('calibration-completed'));
+      notificationService.notifyCalibrationComplete(reservationRefNo, {
+        equipmentType: 'Weighing Scale',
+        calibrationData: saveData
+      });
       
       // Navigate back to calibration page after successful confirmation
       setTimeout(() => {

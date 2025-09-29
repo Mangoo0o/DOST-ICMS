@@ -3,6 +3,7 @@ import { Toaster, toast } from 'react-hot-toast';
 import api, { apiService } from '../services/api';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import { useSearchParams } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import './custom-datepicker.css';
@@ -625,7 +626,10 @@ const AddReservationModal = ({ isOpen, onClose, clients, onAdd, reservationData 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (isEditMode && reservationData) {
+    if (isEditMode && reservationData && clients.length > 0) {
+      console.log('Edit mode - reservationData:', reservationData);
+      console.log('Edit mode - sample data:', reservationData.sample);
+      
       // Pre-fill form for editing
       const client = clients.find(c => c.id === reservationData.client_id);
       setClientInfo({
@@ -647,17 +651,23 @@ const AddReservationModal = ({ isOpen, onClose, clients, onAdd, reservationData 
       setExpectedCompletionDate(reservationData.date_expected_completion ? new Date(reservationData.date_expected_completion) : null);
       setIsExpectedCompletionManuallySet(true); // Mark as manually set when editing
       
-      setEquipments(reservationData.sample.map(eq => ({
+      const mappedEquipments = reservationData.sample.map(eq => {
+        console.log('Mapping equipment:', eq);
+        return {
         id: eq.id,
-        section: eq.section,
-        type: eq.type,
+          section: eq.type, // Sample is stored in 'type' field in database
+          type: eq.section, // Test Request/Calibration is stored in 'section' field in database
         range: eq.range,
         serialNo: eq.serial_no,
         serialNumbers: [eq.serial_no || ''], // Initialize with existing serial number
         qty: eq.quantity, // Assuming quantity is stored in equipment record
         price: eq.price,
         basePrice: '' // Base price is not stored
-      })));
+        };
+      });
+      
+      console.log('Mapped equipments:', mappedEquipments);
+      setEquipments(mappedEquipments);
     }
   }, [reservationData, isEditMode, clients]);
 
@@ -832,11 +842,100 @@ const AddReservationModal = ({ isOpen, onClose, clients, onAdd, reservationData 
         else updated.basePrice = '';
         updated.price = updated.basePrice ? updated.basePrice.toLocaleString() : '';
       }
-      if (field === 'type' && value !== 'OIML F2' && eq.type === 'OIML F2') {
-        updated.price = '';
+      // Handle automatic pricing for Test Request/Calibration options
+      if (field === 'type') {
+        // Weighing Scale pricing
+        if (updated.section === 'Weighing Scale') {
+          if (value === 'Special Accuracy I (Nawi)') {
+            updated.basePrice = 1200;
+            updated.price = '1,200.00';
+          } else if (value === 'High Accuracy II (Nawi)') {
+            updated.basePrice = 1000;
+            updated.price = '1,000.00';
+          } else if (value === 'Medium Accuracy III (Nawi)') {
+            updated.basePrice = 900;
+            updated.price = '900.00';
+          } else if (value === 'Ordinary III (Nawi)') {
+            updated.basePrice = 280;
+            updated.price = '280.00';
+          } else if (value === 'Weighing Scale Ordinary III (platform balance)') {
+            updated.basePrice = 540;
+            updated.price = '540.00';
+          } else if (!value || value === '') {
+            updated.price = '0.00';
         updated.basePrice = '';
-        updated.range = '';
+          }
+        }
+        // Test-Weights pricing
+        else if (updated.section === 'Test-Weights') {
+          if (value === '1 kg to 10 kg (OIML Class F2)') {
+            updated.basePrice = 600;
+            updated.price = '600.00';
+          } else if (value === '10 kg to 20 kg (OIML Class F2)') {
+            updated.basePrice = 800;
+            updated.price = '800.00';
+          } else if (value === '20 kg to 50 kg (OIML Class F2)') {
+            updated.basePrice = 1000;
+            updated.price = '1,000.00';
+          } else if (value === 'up to 5 kg (OIML Class M1/M2/M3)') {
+            updated.basePrice = 450;
+            updated.price = '450.00';
+          } else if (value === '10 kg to 20 kg (OIML Class M1/M2/M3)') {
+            updated.basePrice = 600;
+            updated.price = '600.00';
+          } else if (value === '25 kg to 50 kg (OIML Class M1/M2/M3)') {
+            updated.basePrice = 700;
+            updated.price = '700.00';
+          } else if (!value || value === '') {
+            updated.price = '0.00';
+            updated.basePrice = '';
+          }
+        }
+        // Thermometer pricing
+        else if (updated.section === 'Thermometer') {
+          if (value === '-20°C to +80°C (Digital Thermometer)') {
+            updated.basePrice = 1700;
+            updated.price = '1,700.00';
+          } else if (value === '-30°C to +100°C (Wall / Refrigerator / Bimetallic Thermometer)') {
+            updated.basePrice = 1020;
+            updated.price = '1,020.00';
+          } else if (value === '0°C to 45°C (Room, Max & Min Liquid, Thermograph Dial Type & Electronics)') {
+            updated.basePrice = 425;
+            updated.price = '425.00';
+          } else if (!value || value === '') {
+            updated.price = '0.00';
+            updated.basePrice = '';
+          }
+        }
+        // Sphygmomanometer pricing
+        else if (updated.section === 'Sphygmomanometer') {
+          if (value === '0 bar to 1 bar mmHg to 750 mmHg') {
+            updated.basePrice = 1300;
+            updated.price = '1,300.00';
+          } else if (!value || value === '') {
+            updated.price = '0.00';
+            updated.basePrice = '';
+          }
+        }
+        // Thermohygrometer pricing
+        else if (updated.section === 'Thermohygrometer') {
+          if (value === '0-100% Rh, 0-100°C (Electronic and Dial Thermohygrometer)') {
+            updated.basePrice = 1550;
+            updated.price = '1,550.00';
+          } else if (!value || value === '') {
+            updated.price = '0.00';
+            updated.basePrice = '';
+          }
+        }
       }
+      
+      // Clear pricing when sample type changes away from dropdown-enabled samples
+      if (field === 'section' && value !== 'Weighing Scale' && value !== 'Test-Weights' && value !== 'Thermometer' && value !== 'Sphygmomanometer' && value !== 'Thermohygrometer') {
+        updated.price = '0.00';
+        updated.basePrice = '';
+        updated.type = ''; // Clear the type field when changing away from dropdown-enabled samples
+      }
+      
       return updated;
     }));
   };
@@ -1335,27 +1434,90 @@ const AddReservationModal = ({ isOpen, onClose, clients, onAdd, reservationData 
                   <span>Sample</span>
                   <span>Test Request/Calibration</span>
                   <span>Calibration Test/Method</span>
-                  <span>Sample Code</span>
+                  <span>Serial Number</span>
                   <span className="text-center">Price</span>
                   <span className="w-8"></span> {/* Spacer for remove button */}
                 </div>
                 <div className="space-y-2 py-1">
                   {equipments.map((equip, index) => (
                     <div key={equip.id ?? index} className="grid grid-cols-[3fr_2fr_2fr_2fr_minmax(120px,_1fr)_auto] gap-x-3 items-center px-3">
-                      <input
-                        type="text"
-                        placeholder="Sample"
+                      <select
                         value={equip.section}
                         onChange={e => handleEquipmentChange(equip.id, 'section', e.target.value)}
                         className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Test Request/Calibration"
+                      >
+                        <option value="">Select Sample</option>
+                        <option value="Weighing Scale">Weighing Scale</option>
+                        <option value="Test-Weights">Test-Weights</option>
+                        <option value="Thermometer">Thermometer</option>
+                        <option value="Sphygmomanometer">Sphygmomanometer</option>
+                        <option value="Thermohygrometer">Thermohygrometer</option>
+                      </select>
+                      {equip.section === 'Weighing Scale' ? (
+                        <select
                         value={equip.type}
                         onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
                         className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
-                      />
+                        >
+                          <option value="">Select Test Request/Calibration</option>
+                          <option value="Special Accuracy I (Nawi)">Special Accuracy I (Nawi)</option>
+                          <option value="High Accuracy II (Nawi)">High Accuracy II (Nawi)</option>
+                          <option value="Medium Accuracy III (Nawi)">Medium Accuracy III (Nawi)</option>
+                          <option value="Ordinary III (Nawi)">Ordinary III (Nawi)</option>
+                          <option value="Weighing Scale Ordinary III (platform balance)">Weighing Scale Ordinary III (platform balance)</option>
+                        </select>
+                      ) : equip.section === 'Test-Weights' ? (
+                        <select
+                          value={equip.type}
+                          onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
+                        >
+                          <option value="">Select Test Request/Calibration</option>
+                          <option value="1 kg to 10 kg (OIML Class F2)">1 kg to 10 kg (OIML Class F2)</option>
+                          <option value="10 kg to 20 kg (OIML Class F2)">10 kg to 20 kg (OIML Class F2)</option>
+                          <option value="20 kg to 50 kg (OIML Class F2)">20 kg to 50 kg (OIML Class F2)</option>
+                          <option value="up to 5 kg (OIML Class M1/M2/M3)">up to 5 kg (OIML Class M1/M2/M3)</option>
+                          <option value="10 kg to 20 kg (OIML Class M1/M2/M3)">10 kg to 20 kg (OIML Class M1/M2/M3)</option>
+                          <option value="25 kg to 50 kg (OIML Class M1/M2/M3)">25 kg to 50 kg (OIML Class M1/M2/M3)</option>
+                        </select>
+                      ) : equip.section === 'Thermometer' ? (
+                        <select
+                          value={equip.type}
+                          onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
+                        >
+                          <option value="">Select Test Request/Calibration</option>
+                          <option value="-20°C to +80°C (Digital Thermometer)">-20°C to +80°C (Digital Thermometer)</option>
+                          <option value="-30°C to +100°C (Wall / Refrigerator / Bimetallic Thermometer)">-30°C to +100°C (Wall / Refrigerator / Bimetallic Thermometer)</option>
+                          <option value="0°C to 45°C (Room, Max & Min Liquid, Thermograph Dial Type & Electronics)">0°C to 45°C (Room, Max & Min Liquid, Thermograph Dial Type & Electronics)</option>
+                        </select>
+                      ) : equip.section === 'Sphygmomanometer' ? (
+                        <select
+                          value={equip.type}
+                          onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
+                        >
+                          <option value="">Select Test Request/Calibration</option>
+                          <option value="0 bar to 1 bar mmHg to 750 mmHg">0 bar to 1 bar mmHg to 750 mmHg</option>
+                        </select>
+                      ) : equip.section === 'Thermohygrometer' ? (
+                        <select
+                          value={equip.type}
+                          onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
+                        >
+                          <option value="">Select Test Request/Calibration</option>
+                          <option value="0-100% Rh, 0-100°C (Electronic and Dial Thermohygrometer)">0-100% Rh, 0-100°C (Electronic and Dial Thermohygrometer)</option>
+                        </select>
+                      ) : (
+                        <select
+                          value={equip.type}
+                          onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
+                        >
+                          <option value="">Select Test Request/Calibration</option>
+                        </select>
+                      )}
                       <input
                         type="text"
                         placeholder="Calibration Test/Method"
@@ -1368,7 +1530,7 @@ const AddReservationModal = ({ isOpen, onClose, clients, onAdd, reservationData 
                           <input
                             key={index}
                             type="text"
-                            placeholder={`Sample Code #${index + 1}`}
+                            placeholder={`Serial Number #${index + 1}`}
                             value={equip.serialNumbers ? equip.serialNumbers[index] || '' : (index === 0 ? equip.serialNo || '' : '')}
                             onChange={e => handleSerialNumberChange(equip.id, index, e.target.value)}
                             className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
@@ -1666,6 +1828,7 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onEdit, onAccept, 
 
 const Reservations = () => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [reservations, setReservations] = useState([]);
   const [clients, setClients] = useState([]);
   const [selectedReservation, setSelectedReservation] = useState(null);
@@ -1673,7 +1836,10 @@ const Reservations = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [reservationToEdit, setReservationToEdit] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('in_progress');
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const tab = searchParams.get('tab');
+    return tab === 'pending' ? 'pending' : 'in_progress';
+  });
   const [isTableAnimating, setIsTableAnimating] = useState(false);
   
   // Pagination state
@@ -1740,15 +1906,20 @@ const Reservations = () => {
     setCurrentPage(1);
   }, [searchTerm, statusFilter]);
 
-  const handleViewDetails = (reservation) => {
-    setSelectedReservation(reservation);
-    setIsViewModalOpen(true);
+  const handleStatusFilterChange = (newFilter) => {
+    setStatusFilter(newFilter);
+    setSearchParams({ tab: newFilter });
   };
 
   const handleOpenEditModal = (reservationData) => {
     setReservationToEdit(reservationData);
     setIsViewModalOpen(false); // Close view modal
     setIsAddModalOpen(true); // Open add/edit modal
+  };
+
+  const handleViewDetails = (reservation) => {
+    setSelectedReservation(reservation);
+    setIsViewModalOpen(true);
   };
 
   const handleAcceptReservation = (reservationId) => {
@@ -2354,7 +2525,7 @@ const Reservations = () => {
               ].map(option => (
                 <button
                   key={option.key}
-                  onClick={() => setStatusFilter(option.key)}
+                  onClick={() => handleStatusFilterChange(option.key)}
                   className={`flex-1 px-5 h-10 text-sm rounded-md font-medium transition-colors text-center border-none focus:outline-none focus:ring-2 focus:ring-offset-2
                     ${statusFilter === option.key
                       ? 'bg-[#2a9dab] text-white shadow'

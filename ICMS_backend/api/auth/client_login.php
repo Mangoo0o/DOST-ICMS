@@ -19,6 +19,12 @@ if(!empty($data->email) && !empty($data->password)) {
     if($stmt->rowCount() > 0) {
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         
+        // Debug logging
+        error_log("Client login attempt - Email: " . $data->email);
+        error_log("Client login attempt - Stored password hash: " . $row['password']);
+        error_log("Client login attempt - Provided password: " . $data->password);
+        error_log("Client login attempt - Password verify result: " . (password_verify($data->password, $row['password']) ? 'true' : 'false'));
+        
         if(password_verify($data->password, $row['password'])) {
             $secret_key = "ICMS_SECRET_KEY_2024"; // Match the key in verify_token.php
             $issuer_claim = "THE_ISSUER";

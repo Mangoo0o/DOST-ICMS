@@ -1,4 +1,7 @@
 <?php
+// Debug: Log that this file is being accessed
+error_log("=== UPDATE_CLIENT.PHP ACCESSED ===");
+
 // Include centralized CORS configuration
 require_once __DIR__ . '/../config/cors.php';
 
@@ -22,6 +25,9 @@ try {
     // Get the raw input data
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);
+    
+    // Debug log the received data
+    error_log("Client update received data: " . json_encode($data));
 
     // Validate required fields
     if (!isset($data['id']) || !isset($data['first_name']) || !isset($data['last_name']) || 
@@ -71,12 +77,29 @@ try {
               industry_type = :industry_type,
               service_line = :service_line,
               company_head = :company_head,
+              password = :password,
               is_pwd = :is_pwd,
               is_4ps = :is_4ps,
               updated_at = NOW()
               WHERE id = :id";
 
     $stmt = $db->prepare($query);
+
+    // Handle password hashing if password is provided
+    $password_hash = null;
+    if (!empty($data['password'])) {
+        $password_hash = password_hash($data['password'], PASSWORD_BCRYPT);
+        error_log("Password update: New password provided, hashed successfully");
+    } else {
+        // If no password provided, get the existing password from database
+        $existing_query = "SELECT password FROM clients WHERE id = :id";
+        $existing_stmt = $db->prepare($existing_query);
+        $existing_stmt->bindParam(':id', $data['id']);
+        $existing_stmt->execute();
+        $existing_client = $existing_stmt->fetch(PDO::FETCH_ASSOC);
+        $password_hash = $existing_client['password'];
+        error_log("Password update: No new password provided, keeping existing password");
+    }
 
     // Bind parameters
     $stmt->bindParam(':id', $data['id']);
@@ -93,6 +116,7 @@ try {
     $stmt->bindParam(':industry_type', $data['industry_type']);
     $stmt->bindParam(':service_line', $data['service_line']);
     $stmt->bindParam(':company_head', $data['company_head']);
+    $stmt->bindParam(':password', $password_hash);
     $stmt->bindParam(':is_pwd', $data['is_pwd']);
     $stmt->bindParam(':is_4ps', $data['is_4ps']);
 

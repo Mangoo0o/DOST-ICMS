@@ -584,7 +584,8 @@ const AddClientModal = ({ isOpen, onClose, onAdd }) => {
     if (!formData.industry_type.trim()) newErrors.industry_type = 'Industry type is required';
     if (!formData.service_line.trim()) newErrors.service_line = 'Service line is required';
 
-    // Password validation
+    // Password validation (only validate if password is being entered)
+    if (formData.password || formData.confirmPassword) {
     if (!formData.password) {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 6) {
@@ -592,6 +593,7 @@ const AddClientModal = ({ isOpen, onClose, onAdd }) => {
     }
     if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
+      }
     }
 
     return newErrors;
@@ -1048,6 +1050,8 @@ const EditClientModal = ({ isOpen, onClose, onEdit, client }) => {
     industry_type: '',
     service_line: '',
     company_head: '',
+    password: '',
+    confirmPassword: '',
     is_pwd: false,
     is_4ps: false
   });
@@ -1075,6 +1079,8 @@ const EditClientModal = ({ isOpen, onClose, onEdit, client }) => {
         industry_type: client.industry_type || '',
         service_line: client.service_line || '',
         company_head: client.company_head || '',
+        password: '', // Don't populate password for security
+        confirmPassword: '', // Don't populate confirm password
         is_pwd: client.is_pwd || false,
         is_4ps: client.is_4ps || false
       });
@@ -1165,7 +1171,10 @@ const EditClientModal = ({ isOpen, onClose, onEdit, client }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log('EditClientModal: Form submit triggered'); // Debug
+    console.log('EditClientModal: Form data before validation:', formData); // Debug
     const newErrors = validateForm();
+    console.log('EditClientModal: Validation errors:', newErrors); // Debug
     if (Object.keys(newErrors).length === 0) {
       setIsSubmitting(true);
       try {
@@ -1184,9 +1193,11 @@ const EditClientModal = ({ isOpen, onClose, onEdit, client }) => {
           industry_type: formData.industry_type,
           service_line: formData.service_line,
           company_head: formData.company_head,
+          password: formData.password,
           is_pwd: formData.is_pwd,
           is_4ps: formData.is_4ps
         });
+        console.log('Form submitted with password:', formData.password); // Debug password
         onClose();
         toast.success('Client has been successfully updated!', {
           duration: 4000,
@@ -1828,6 +1839,7 @@ const Users = () => {
   const handleEditClient = async (updatedClient) => {
     try {
       console.log('Sending client update data:', updatedClient); // Debug log
+      console.log('Password field value:', updatedClient.password); // Debug password
       
       const response = await apiService.updateClient({
         id: updatedClient.id,
@@ -1844,6 +1856,7 @@ const Users = () => {
         industry_type: updatedClient.industry_type,
         service_line: updatedClient.service_line,
         company_head: updatedClient.company_head,
+        password: updatedClient.password,
         is_pwd: updatedClient.is_pwd,
         is_4ps: updatedClient.is_4ps
       });

@@ -359,23 +359,23 @@ foreach ($test_pressures as $index => $pressure) {
     $decreasingReading = '';
     $maxDeviation = '';
     
-    // Use actual calibration data structure
-    if (isset($result_data['deviationMmHg'][$index]) || isset($result_data['deviationKPa'][$index])) {
-        // Show deviation in mmHg for increasing column
-        if (isset($result_data['deviationMmHg'][$index])) {
-            $increasingReading = round($result_data['deviationMmHg'][$index], 1);
+    // Use actual calibration data structure from SphygmomanometerCalibration.jsx
+    if (isset($result_data['uutIncMean'][$index]) || isset($result_data['uutDecMean'][$index])) {
+        // Show UUT increasing mean
+        if (isset($result_data['uutIncMean'][$index])) {
+            $increasingReading = number_format(floor($result_data['uutIncMean'][$index] * 100) / 100, 2);
         }
         
-        // Show deviation in kPa for decreasing column
-        if (isset($result_data['deviationKPa'][$index])) {
-            $decreasingReading = round($result_data['deviationKPa'][$index], 1);
+        // Show UUT decreasing mean
+        if (isset($result_data['uutDecMean'][$index])) {
+            $decreasingReading = number_format(floor($result_data['uutDecMean'][$index] * 100) / 100, 2);
         }
         
         // Calculate maximum deviation from result data
-        if (isset($result_data['deviationMmHg'][$index])) {
-            $maxDeviation = round(abs($result_data['deviationMmHg'][$index]), 1);
-        } elseif (isset($result_data['maxDeviation'])) {
-            $maxDeviation = round($result_data['maxDeviation'], 1);
+        if (isset($result_data['maxDeviation'][$index])) {
+            $maxDeviation = number_format(floor($result_data['maxDeviation'][$index] * 100) / 100, 2);
+        } elseif (isset($result_data['maxDeviation']) && is_array($result_data['maxDeviation'])) {
+            $maxDeviation = number_format(floor($result_data['maxDeviation'][$index] * 100) / 100, 2);
         }
     }
     
@@ -400,9 +400,9 @@ $pdf->SetFont('Arial', '', 8);
 $maxHysteresisError = '';
 if (isset($result_data['hysteresisMax'])) {
     if (is_array($result_data['hysteresisMax'])) {
-        $maxHysteresisError = round(max($result_data['hysteresisMax']), 1) . ' mmHg';
+        $maxHysteresisError = number_format(floor(max($result_data['hysteresisMax']) * 100) / 100, 2) . ' mmHg';
     } else {
-        $maxHysteresisError = round($result_data['hysteresisMax'], 1) . ' mmHg';
+        $maxHysteresisError = number_format(floor($result_data['hysteresisMax'] * 100) / 100, 2) . ' mmHg';
     }
 }
 
@@ -442,14 +442,14 @@ foreach ($leakage_pressures as $index => $pressure) {
     $rateOfLoss = '';
     
     if (isset($input_data['lossFirst'][$index]) && isset($input_data['lossAfter5'][$index])) {
-        $firstReading = $input_data['lossFirst'][$index];
-        $after5Minutes = $input_data['lossAfter5'][$index];
+        $firstReading = number_format(floor($input_data['lossFirst'][$index] * 100) / 100, 2);
+        $after5Minutes = number_format(floor($input_data['lossAfter5'][$index] * 100) / 100, 2);
         
         // Calculate rate of pressure loss from result data
         if (isset($result_data['lossRate'][$index])) {
-            $rateOfLoss = round($result_data['lossRate'][$index], 1) . ' mmHg/min';
+            $rateOfLoss = number_format(floor($result_data['lossRate'][$index] * 100) / 100, 2) . ' mmHg/min';
         } elseif (isset($result_data['lossRate']) && is_array($result_data['lossRate'])) {
-            $rateOfLoss = round($result_data['lossRate'][$index], 1) . ' mmHg/min';
+            $rateOfLoss = number_format(floor($result_data['lossRate'][$index] * 100) / 100, 2) . ' mmHg/min';
         }
     }
     

@@ -117,7 +117,7 @@ const ViewRequestModal = ({ isOpen, onClose, reservation }) => {
 const AddRequestModal = ({ isOpen, onClose, user }) => {
   // --- Equipment and Client Info State ---
   const [equipments, setEquipments] = useState([
-    { id: Date.now(), section: '', type: '', range: '', serialNos: [''], qty: 1, price: '', basePrice: '' }
+    { id: Date.now(), section: '', type: '', range: '', serialNo: '', serialNumbers: [''], qty: 1, price: '0.00', basePrice: '' }
   ]);
   const [clientInfo, setClientInfo] = useState(null);
   const [province, setProvince] = useState('');
@@ -203,107 +203,148 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
 
   // --- Equipment Handlers (copied and adapted from Reservations.jsx) ---
   const handleAddEquipment = () => {
-    setEquipments([...equipments, { id: Date.now(), section: '', type: '', range: '', serialNos: [''], qty: 1, price: '', basePrice: '' }]);
+    setEquipments([
+      ...equipments,
+      { id: Date.now() + Math.random(), section: '', type: '', range: '', serialNo: '', serialNumbers: [''], qty: 1, price: '0.00', basePrice: '' }
+    ]);
   };
   const handleEquipmentChange = (id, field, value) => {
     setEquipments(equipments.map(eq => {
       if (eq.id !== id) return eq;
       let updated = { ...eq, [field]: value };
-      // --- Price logic (copied from Reservations.jsx) ---
-      if (updated.type === 'Proving Tanks' && field === 'range') {
-        if (value === '100L to 400L') updated.basePrice = 1500;
-        else if (value === '500L to 2000L') updated.basePrice = 5000;
-        else if (value === '2500L to 4000L') updated.basePrice = 4000;
-        else updated.basePrice = '';
-        updated.price = updated.basePrice && updated.qty ? (updated.basePrice * updated.qty).toLocaleString() : '';
-      }
-      if (field === 'type' && value !== 'Proving Tanks') {
-        updated.price = '';
-        updated.basePrice = '';
-      }
-      if (field === 'qty' && updated.type === 'Proving Tanks' && updated.basePrice) {
-        updated.price = (updated.basePrice * value).toLocaleString();
-      }
-      if (updated.type === 'Test Measure' && field === 'range') {
-        if (value === '70L') updated.basePrice = 500;
-        else updated.basePrice = '';
-        updated.price = updated.basePrice && updated.qty ? (updated.basePrice * updated.qty).toLocaleString() : '';
-      }
-      if (field === 'type' && value !== 'Test Measure' && eq.type === 'Test Measure') {
-        updated.price = '';
-        updated.basePrice = '';
-        updated.range = '';
-      }
-      if (field === 'qty' && updated.type === 'Test Measure' && updated.basePrice) {
-        updated.price = (updated.basePrice * value).toLocaleString();
-      }
-      if (updated.type === 'Fuel Dispensing Pump' && field === 'range') {
-        if (value === 'Per Muzzle') updated.basePrice = 700;
-        else updated.basePrice = '';
-        updated.price = updated.basePrice && updated.qty ? (updated.basePrice * updated.qty).toLocaleString() : '';
-      }
-      if (field === 'type' && value !== 'Fuel Dispensing Pump' && eq.type === 'Fuel Dispensing Pump') {
-        updated.price = '';
-        updated.basePrice = '';
-        updated.range = '';
-      }
-      if (field === 'qty' && updated.type === 'Fuel Dispensing Pump' && updated.basePrice) {
-        updated.price = (updated.basePrice * value).toLocaleString();
-      }
-      if (updated.type === 'Road Tankers' && field === 'range') {
-        if (value === '5000L and below') updated.basePrice = 1000;
-        else if (value === '6000 to 10000L') updated.basePrice = 1500;
-        else if (value === '11000L to 15000L') updated.basePrice = 2000;
-        else if (value === '16000 to 20000L') updated.basePrice = 2500;
-        else if (value === '21000 to 25000L') updated.basePrice = 3000;
-        else if (value === '26000 to 30000L') updated.basePrice = 3500;
-        else if (value === '31000 to 35000L') updated.basePrice = 4000;
-        else if (value === '36000 to 40000L') updated.basePrice = 4500;
-        else if (value === '41000 to 45000L') updated.basePrice = 5000;
-        else if (value === '46000 to 50000L') updated.basePrice = 5500;
-        else updated.basePrice = '';
-        updated.price = updated.basePrice && updated.qty ? (updated.basePrice * updated.qty).toLocaleString() : '';
-      }
-      if (field === 'type' && value !== 'Road Tankers' && eq.type === 'Road Tankers') {
-        updated.price = '';
-        updated.basePrice = '';
-        updated.range = '';
-      }
-      if (field === 'qty' && updated.type === 'Road Tankers' && updated.basePrice) {
-        updated.price = (updated.basePrice * value).toLocaleString();
-      }
-      if (updated.type === 'OIML F2' && field === 'range') {
-        if (value === '1kg to 10kg') updated.basePrice = 600;
-        else if (value === '10kg to 20kg') updated.basePrice = 800;
-        else if (value === '20kg to 50kg') updated.basePrice = 1000;
-        else updated.basePrice = '';
-        updated.price = updated.basePrice && updated.qty ? (updated.basePrice * updated.qty).toLocaleString() : '';
-      }
-      if (field === 'type' && value !== 'OIML F2' && eq.type === 'OIML F2') {
-        updated.price = '';
-        updated.basePrice = '';
-        updated.range = '';
-      }
-      if (field === 'qty' && updated.type === 'OIML F2' && updated.basePrice) {
-        updated.price = (updated.basePrice * value).toLocaleString();
-      }
-      // Handle manual price entry for equipment types without automatic pricing
+      
+      // Handle manual price changes - don't override if user is manually setting price
       if (field === 'price') {
-        const priceValue = parseFloat(value) || 0;
-        updated.basePrice = priceValue;
-        updated.price = priceValue && updated.qty ? (priceValue * updated.qty).toLocaleString() : value;
+        // Validate and format price input
+        const numericValue = parseFloat(value.replace(/[^0-9.]/g, '')) || 0;
+        updated.price = numericValue.toFixed(2);
+        updated.basePrice = numericValue;
+        return updated;
       }
+      
+      // Pricing logic for different sample types
+      if (field === 'type') {
+        // Weighing Scale pricing
+        if (updated.section === 'Weighing Scale') {
+          switch (value) {
+            case 'Special Accuracy I (Nawi)':
+              updated.basePrice = 1200;
+              break;
+            case 'High Accuracy II (Nawi)':
+              updated.basePrice = 1000;
+              break;
+            case 'Medium Accuracy III (Nawi)':
+              updated.basePrice = 900;
+              break;
+            case 'Ordinary III (Nawi)':
+              updated.basePrice = 280;
+              break;
+            case 'Weighing Scale Ordinary III (platform balance)':
+              updated.basePrice = 540;
+              break;
+            default:
+              updated.basePrice = '';
+          }
+        }
+        // Test-Weights pricing
+        else if (updated.section === 'Test-Weights') {
+          switch (value) {
+            case '1 kg to 10 kg (OIML Class F2)':
+              updated.basePrice = 600;
+              break;
+            case '10 kg to 20 kg (OIML Class F2)':
+              updated.basePrice = 800;
+              break;
+            case '20 kg to 50 kg (OIML Class F2)':
+              updated.basePrice = 1000;
+              break;
+            case 'up to 5 kg (OIML Class M1/M2/M3)':
+              updated.basePrice = 450;
+              break;
+            case '10 kg to 20 kg (OIML Class M1/M2/M3)':
+              updated.basePrice = 600;
+              break;
+            case '25 kg to 50 kg (OIML Class M1/M2/M3)':
+              updated.basePrice = 700;
+              break;
+            default:
+              updated.basePrice = '';
+          }
+        }
+        // Thermometer pricing
+        else if (updated.section === 'Thermometer') {
+          switch (value) {
+            case '-20°C to +80°C (Digital Thermometer)':
+              updated.basePrice = 1700;
+              break;
+            case '-30°C to +100°C (Wall / Refrigerator / Bimetallic Thermometer)':
+              updated.basePrice = 1020;
+              break;
+            case '0°C to 45°C (Room, Max & Min Liquid, Thermograph Dial Type & Electronics)':
+              updated.basePrice = 425;
+              break;
+            default:
+              updated.basePrice = '';
+          }
+        }
+        // Sphygmomanometer pricing
+        else if (updated.section === 'Sphygmomanometer') {
+          switch (value) {
+            case '0 bar to 1 bar mmHg to 750 mmHg':
+              updated.basePrice = 1300;
+              break;
+            default:
+              updated.basePrice = '';
+          }
+        }
+        // Thermohygrometer pricing
+        else if (updated.section === 'Thermohygrometer') {
+          switch (value) {
+            case '0-100% Rh, 0-100°C (Electronic and Dial Thermohygrometer)':
+              updated.basePrice = 1550;
+              break;
+            default:
+              updated.basePrice = '';
+          }
+        }
+        
+        // Calculate total price
+        if (updated.basePrice && updated.qty) {
+          updated.price = (updated.basePrice * updated.qty).toFixed(2);
+        } else if (updated.basePrice) {
+          updated.price = updated.basePrice.toFixed(2);
+        } else {
+          updated.price = '0.00';
+        }
+      }
+      
+      // Handle quantity changes
+      if (field === 'qty') {
+        const newQty = Math.max(1, parseInt(value) || 1);
+        updated.qty = newQty;
+        if (updated.basePrice) {
+          updated.price = (updated.basePrice * newQty).toFixed(2);
+        }
+      }
+      
+      // Clear pricing when sample type changes away from dropdown-enabled samples
+      if (field === 'section' && value !== 'Weighing Scale' && value !== 'Test-Weights' && value !== 'Thermometer' && value !== 'Sphygmomanometer' && value !== 'Thermohygrometer') {
+        updated.price = '0.00';
+        updated.basePrice = '';
+        updated.type = ''; // Clear the type field when changing away from dropdown-enabled samples
+      }
+      
       return updated;
     }));
   };
-  const handleSerialChange = (id, index, value) => {
+  const handleSerialNumberChange = (id, index, value) => {
     setEquipments(equipments.map(eq => {
       if (eq.id !== id) return eq;
-      const serials = Array.isArray(eq.serialNos) ? [...eq.serialNos] : [];
+      const serialNumbers = Array.isArray(eq.serialNumbers) ? [...eq.serialNumbers] : [];
       // Ensure array has correct length
-      while (serials.length < (eq.qty || 1)) serials.push('');
-      serials[index] = value;
-      return { ...eq, serialNos: serials };
+      while (serialNumbers.length < (eq.qty || 1)) serialNumbers.push('');
+      serialNumbers[index] = value;
+      return { ...eq, serialNumbers };
     }));
   };
   const handleQtyChange = (id, amount) => {
@@ -311,29 +352,18 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
       if (eq.id !== id) return eq;
       const newQty = Math.max(1, eq.qty + amount);
       let updated = { ...eq, qty: newQty };
-      // Keep serial numbers array in sync with quantity
-      const serials = Array.isArray(eq.serialNos) ? [...eq.serialNos] : [];
-      if (newQty > serials.length) {
-        while (serials.length < newQty) serials.push('');
-      } else if (newQty < serials.length) {
-        serials.length = newQty;
+      
+      // Update serial numbers array length
+      const serialNumbers = Array.isArray(eq.serialNumbers) ? [...eq.serialNumbers] : [];
+      while (serialNumbers.length < newQty) serialNumbers.push('');
+      while (serialNumbers.length > newQty) serialNumbers.pop();
+      updated.serialNumbers = serialNumbers;
+      
+      // Recalculate price if base price exists
+      if (updated.basePrice) {
+        updated.price = (updated.basePrice * newQty).toFixed(2);
       }
-      updated.serialNos = serials;
-      if (eq.type === 'Proving Tanks' && eq.basePrice) {
-        updated.price = (eq.basePrice * newQty).toLocaleString();
-      }
-      if (eq.type === 'Test Measure' && eq.basePrice) {
-        updated.price = (eq.basePrice * newQty).toLocaleString();
-      }
-      if (eq.type === 'Fuel Dispensing Pump' && eq.basePrice) {
-        updated.price = (eq.basePrice * newQty).toLocaleString();
-      }
-      if (eq.type === 'Road Tankers' && eq.basePrice) {
-        updated.price = (eq.basePrice * newQty).toLocaleString();
-      }
-      if (eq.type === 'OIML F2' && eq.basePrice) {
-        updated.price = (eq.basePrice * newQty).toLocaleString();
-      }
+      
       return updated;
     }));
   };
@@ -358,7 +388,7 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
       return;
     }
     const isEquipmentValid = equipments.every(eq => {
-      const serials = Array.isArray(eq.serialNos) ? eq.serialNos : [];
+      const serials = Array.isArray(eq.serialNumbers) ? eq.serialNumbers : [];
       const serialsComplete = serials.length === (eq.qty || 1) && serials.every(s => (s || '').toString().trim() !== '');
       return eq.section && eq.type && eq.range && serialsComplete && eq.price;
     });
@@ -367,7 +397,7 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
       return;
     }
     // Check for duplicate serial numbers within the current request
-    const allSerials = equipments.flatMap(eq => (Array.isArray(eq.serialNos) ? eq.serialNos : [])).map(s => (s || '').toString().trim()).filter(Boolean);
+    const allSerials = equipments.flatMap(eq => (Array.isArray(eq.serialNumbers) ? eq.serialNumbers : [])).map(s => (s || '').toString().trim()).filter(Boolean);
     const seen = new Set();
     const duplicates = new Set();
     for (const s of allSerials) {
@@ -390,7 +420,7 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
       const referenceNumber = requestResponse.data.reference_number;
       // Create each equipment sequentially to catch which serial fails (e.g., 409 Conflict)
       for (const equipment of equipments) {
-        const serials = Array.isArray(equipment.serialNos) ? equipment.serialNos : [];
+        const serials = Array.isArray(equipment.serialNumbers) ? equipment.serialNumbers : [];
         for (let i = 0; i < equipment.qty; i++) {
           const priceToUse = equipment.basePrice || parseFloat(equipment.price.toString().replace(/,/g, ''));
           const serial = (serials[i] || '').toString().trim();
@@ -448,7 +478,7 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
   // --- Cancel Modal ---
   const handleAttemptClose = () => setIsCancelConfirmOpen(true);
   const handleConfirmClose = () => {
-    setEquipments([{ id: Date.now(), section: '', type: '', range: '', serialNos: [''], qty: 1, price: '', basePrice: '' }]);
+    setEquipments([{ id: Date.now(), section: '', type: '', range: '', serialNo: '', serialNumbers: [''], qty: 1, price: '0.00', basePrice: '' }]);
     setScheduledDate(new Date());
     setExpectedCompletionDate(null);
     setIsExpectedCompletionManuallySet(false);
@@ -618,9 +648,9 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
               <h3 className="text-lg font-medium mb-3">Sample Details</h3>
               <div className="max-h-[170px] overflow-y-auto" style={{ scrollbarGutter: 'stable', scrollBehavior: 'smooth' }}>
                 <div className="grid grid-cols-[3fr_2fr_2fr_2fr_minmax(120px,_1fr)_1fr_auto] gap-x-3 items-center font-bold text-xs text-gray-700 px-3 py-2 sticky top-0 bg-white z-10 border-b">
-                  <span>Section</span>
-                  <span>Type of Sample</span>
-                  <span>Range/Capacity</span>
+                  <span>Sample</span>
+                  <span>Test Request/Calibration</span>
+                  <span>Calibration Test/Method</span>
                   <span>Serial Number(s)</span>
                   <span className="text-center">Quantity</span>
                   <span className="text-center">Price</span>
@@ -634,57 +664,93 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
                         onChange={e => handleEquipmentChange(equip.id, 'section', e.target.value)}
                         className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
                       >
-                        <option value="">Section</option>
-                        {sectionOptions.map(option => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
+                        <option value="">Select Sample</option>
+                        <option value="Weighing Scale">Weighing Scale</option>
+                        <option value="Test-Weights">Test-Weights</option>
+                        <option value="Thermometer">Thermometer</option>
+                        <option value="Sphygmomanometer">Sphygmomanometer</option>
+                        <option value="Thermohygrometer">Thermohygrometer</option>
                       </select>
-                      <select
-                        value={equip.type}
-                        onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
-                        className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
-                        disabled={!equip.section}
-                      >
-                        <option value="">Type of Sample</option>
-                        {(equip.section === 'Volume Standards'
-                          ? volumeTypeOptions
-                          : equip.section === 'Mass Standards'
-                            ? massStandardTypeOptions
-                            : defaultTypeOptions
-                        ).map(option => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-                      <select
+                      {equip.section === 'Weighing Scale' ? (
+                        <select
+                          value={equip.type}
+                          onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
+                        >
+                          <option value="">Select Test Request/Calibration</option>
+                          <option value="Special Accuracy I (Nawi)">Special Accuracy I (Nawi)</option>
+                          <option value="High Accuracy II (Nawi)">High Accuracy II (Nawi)</option>
+                          <option value="Medium Accuracy III (Nawi)">Medium Accuracy III (Nawi)</option>
+                          <option value="Ordinary III (Nawi)">Ordinary III (Nawi)</option>
+                          <option value="Weighing Scale Ordinary III (platform balance)">Weighing Scale Ordinary III (platform balance)</option>
+                        </select>
+                      ) : equip.section === 'Test-Weights' ? (
+                        <select
+                          value={equip.type}
+                          onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
+                        >
+                          <option value="">Select Test Request/Calibration</option>
+                          <option value="1 kg to 10 kg (OIML Class F2)">1 kg to 10 kg (OIML Class F2)</option>
+                          <option value="10 kg to 20 kg (OIML Class F2)">10 kg to 20 kg (OIML Class F2)</option>
+                          <option value="20 kg to 50 kg (OIML Class F2)">20 kg to 50 kg (OIML Class F2)</option>
+                          <option value="up to 5 kg (OIML Class M1/M2/M3)">up to 5 kg (OIML Class M1/M2/M3)</option>
+                          <option value="10 kg to 20 kg (OIML Class M1/M2/M3)">10 kg to 20 kg (OIML Class M1/M2/M3)</option>
+                          <option value="25 kg to 50 kg (OIML Class M1/M2/M3)">25 kg to 50 kg (OIML Class M1/M2/M3)</option>
+                        </select>
+                      ) : equip.section === 'Thermometer' ? (
+                        <select
+                          value={equip.type}
+                          onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
+                        >
+                          <option value="">Select Test Request/Calibration</option>
+                          <option value="-20°C to +80°C (Digital Thermometer)">-20°C to +80°C (Digital Thermometer)</option>
+                          <option value="-30°C to +100°C (Wall / Refrigerator / Bimetallic Thermometer)">-30°C to +100°C (Wall / Refrigerator / Bimetallic Thermometer)</option>
+                          <option value="0°C to 45°C (Room, Max & Min Liquid, Thermograph Dial Type & Electronics)">0°C to 45°C (Room, Max & Min Liquid, Thermograph Dial Type & Electronics)</option>
+                        </select>
+                      ) : equip.section === 'Sphygmomanometer' ? (
+                        <select
+                          value={equip.type}
+                          onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
+                        >
+                          <option value="">Select Test Request/Calibration</option>
+                          <option value="0 bar to 1 bar mmHg to 750 mmHg">0 bar to 1 bar mmHg to 750 mmHg</option>
+                        </select>
+                      ) : equip.section === 'Thermohygrometer' ? (
+                        <select
+                          value={equip.type}
+                          onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
+                        >
+                          <option value="">Select Test Request/Calibration</option>
+                          <option value="0-100% Rh, 0-100°C (Electronic and Dial Thermohygrometer)">0-100% Rh, 0-100°C (Electronic and Dial Thermohygrometer)</option>
+                        </select>
+                      ) : (
+                        <select
+                          value={equip.type}
+                          onChange={e => handleEquipmentChange(equip.id, 'type', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
+                        >
+                          <option value="">Select Test Request/Calibration</option>
+                        </select>
+                      )}
+                      <input
+                        type="text"
+                        placeholder="Calibration Test/Method"
                         value={equip.range}
                         onChange={e => handleEquipmentChange(equip.id, 'range', e.target.value)}
                         className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
-                        disabled={!equip.section || !equip.type}
-                      >
-                        <option value="">Range/Capacity</option>
-                        {(equip.type === 'Proving Tanks'
-                          ? provingTankRangeOptions
-                          : equip.type === 'Test Measure'
-                            ? testMeasureRangeOptions
-                            : equip.type === 'Fuel Dispensing Pump'
-                              ? fuelDispensingPumpRangeOptions
-                              : equip.type === 'Road Tankers'
-                                ? roadTankerRangeOptions
-                                : equip.type === 'OIML F2'
-                                  ? oimlF2RangeOptions
-                                  : defaultRangeOptions
-                        ).map(option => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-                      <div className="flex flex-col gap-1">
-                        {Array.from({ length: equip.qty || 1 }).map((_, i) => (
+                      />
+                      <div className="space-y-1">
+                        {Array.from({ length: equip.qty || 1 }, (_, index) => (
                           <input
-                            key={i}
+                            key={index}
                             type="text"
-                            placeholder={`Serial Number ${equip.qty > 1 ? `#${i+1}` : ''}`}
-                            value={(equip.serialNos && equip.serialNos[i]) || ''}
-                            onChange={e => handleSerialChange(equip.id, i, e.target.value)}
+                            placeholder={`Serial Number #${index + 1}`}
+                            value={equip.serialNumbers ? equip.serialNumbers[index] || '' : (index === 0 ? equip.serialNo || '' : '')}
+                            onChange={e => handleSerialNumberChange(equip.id, index, e.target.value)}
                             className="w-full px-3 py-2 border rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab]"
                           />
                         ))}
