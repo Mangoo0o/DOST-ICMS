@@ -422,6 +422,7 @@ function TestWeightsCalibration() {
       mc_t,
       u_mc_t,
       U_mc_t,
+      u_mc_t_mg: Number((U_mc_t * 1000).toFixed(2)),
       correction,
       passesMPE,
       mpe, // user-editable
@@ -483,6 +484,7 @@ function TestWeightsCalibration() {
       mc_t,
       u_mc_t,
       U_mc_t,
+      u_mc_t_mg: Number((U_mc_t * 1000).toFixed(2)),
       correction,
       passesMPE,
       mpe, // user-editable
@@ -956,7 +958,7 @@ function TestWeightsCalibration() {
                   <tr><td className="border px-2 py-1">u_ba</td><td className="border px-2 py-1 font-mono">{u_ba}</td></tr>
                   <tr><td className="border px-2 py-1">Coverage Factor (k)</td><td className="border px-2 py-1 font-mono">{k}</td></tr>
                   <tr><td className="border px-2 py-1">Combined Standard Uncertainty (u)</td><td className="border px-2 py-1 font-mono">{u_mc_t.toFixed(6)} g</td></tr>
-                  <tr><td className="border px-2 py-1">Expanded Uncertainty (U)</td><td className="border px-2 py-1 font-mono">{U_mc_t.toFixed(6)} g</td></tr>
+                  <tr><td className="border px-2 py-1">UNCERTAINTY OF MEASUREMENT (k=2), mg</td><td className="border px-2 py-1 font-mono">{(U_mc_t * 1000).toFixed(2)} mg</td></tr>
                   <tr className="bg-gray-100"><th colSpan="2" className="text-left px-2 py-1">MPE Check</th></tr>
                   <tr><td className="border px-2 py-1">Correction (mc_t - m)</td><td className="border px-2 py-1 font-mono">{correction.toFixed(6)} g</td></tr>
                   <tr><td className="border px-2 py-1">MPE (from OIML table)</td><td className="border px-2 py-1">{modernInput({ value: mpe, onChange: e => setMpe(e.target.value), type: 'number' })}</td></tr>

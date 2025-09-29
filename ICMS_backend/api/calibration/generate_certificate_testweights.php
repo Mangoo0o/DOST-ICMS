@@ -257,13 +257,19 @@ $pdf->Ln(2);
 $nominal_value = $input_data['preparation']['testWeightNomval'] ?? null;
 $identification = $serial_no ?: 'DS-2025-001';
 $conventional_mass = $result_data['meanDmci'] ?? null;
-$uncertainty = $result_data['u_mc_t'] ?? null;
+// Prefer mg value if present; otherwise convert grams to mg for display
+$uncertainty_mg = null;
+if (isset($result_data['u_mc_t_mg']) && is_numeric($result_data['u_mc_t_mg'])) {
+    $uncertainty_mg = (float)$result_data['u_mc_t_mg'];
+} elseif (isset($result_data['u_mc_t']) && is_numeric($result_data['u_mc_t'])) {
+    $uncertainty_mg = ((float)$result_data['u_mc_t']) * 1000.0;
+}
 $mpe = $input_data['mpe'] ?? null;
 
 // Format the values to match the image format
 $nominal_display = is_numeric($nominal_value) ? number_format($nominal_value, 0) . ' g' : '20 g';
 $conventional_display = is_numeric($conventional_mass) ? number_format($conventional_mass, 0) . ' g + ' . number_format(($conventional_mass - floor($conventional_mass)) * 1000, 2) . ' mg' : '0 g + 0.00 mg';
-$uncertainty_display = is_numeric($uncertainty) ? number_format($uncertainty, 2) : '0.00';
+$uncertainty_display = is_numeric($uncertainty_mg) ? number_format($uncertainty_mg, 2) : '0.00';
 $mpe_display = is_numeric($mpe) ? number_format($mpe, 2) : '2.50';
 
 // Column widths - reduced uncertainty and MPE columns to make room for other tables
