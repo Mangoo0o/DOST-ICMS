@@ -32,10 +32,11 @@ const ModernButton = (props) => (
 
 const steps = [
   { id: 1, title: 'Equipment & Device Info', icon: <MdInfo /> },
-  { id: 2, title: 'IPRT & UUT (DKD R-6-1)', icon: <MdScience /> },
-  { id: 3, title: 'Rate of Pressure Loss', icon: <MdScience /> },
-  { id: 4, title: 'Rapid Exhaust Valve Test', icon: <MdScience /> },
-  { id: 5, title: 'Results', icon: <MdCalculate /> },
+  { id: 2, title: 'Standard Readings (IPRT)', icon: <MdScience /> },
+  { id: 3, title: 'UUT Readings (DKD R-6-1)', icon: <MdScience /> },
+  { id: 4, title: 'Rate of Pressure Loss', icon: <MdScience /> },
+  { id: 5, title: 'Rapid Exhaust Valve Test', icon: <MdScience /> },
+  { id: 6, title: 'Results', icon: <MdCalculate /> },
 ];
 
 function SphygmomanometerCalibration() {
@@ -515,9 +516,70 @@ function SphygmomanometerCalibration() {
         return (
           <>
             <CardSection>
+              <h3 className="font-semibold mb-2">STANDARD READINGS (IPRT) — DKD R-6-1</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full table-fixed border text-xs mb-3">
+                  <colgroup>
+                    <col style={{ width: '110px' }} />
+                    <col style={{ width: '1fr' }} />
+                    <col style={{ width: '1fr' }} />
+                    <col style={{ width: '1fr' }} />
+                    <col style={{ width: '1fr' }} />
+                    <col style={{ width: '130px' }} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th className="border p-1" rowSpan={2}>APPLIED</th>
+                      <th className="border p-1" rowSpan={2}>X1</th>
+                      <th className="border p-1" rowSpan={2}>X2</th>
+                      <th className="border p-1" rowSpan={2}>X3</th>
+                      <th className="border p-1" rowSpan={2}>X4</th>
+                      <th className="border p-1" rowSpan={2}>MEAN IPRT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {appliedPressures.map((p,idx)=> (
+                      <tr key={`iprt-${p}`}>
+                        <td className="border p-1 text-center">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span>{p}</span>
+                            <span className="text-[10px] text-gray-500">PRESSURE ({mmHgToKPa(p)} kPa)</span>
+                          </div>
+                        </td>
+                        {['X1','X2','X3','X4'].map(k => (
+                          <td key={`iprt-${k}`} className="border p-1 bg-green-100">
+                            <ModernInput type="number" inputMode="decimal" value={iprtRows[idx][k] ?? ''} onChange={e=> setIprtCell(idx,k,e.target.value)} />
+                          </td>
+                        ))}
+                        <td className="border p-1 text-center bg-gray-50">{iprtMean[idx]!==''? formatDec(iprtMean[idx], 6) : ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardSection>
+          </>
+        );
+      case 3:
+        return (
+          <>
+            <CardSection>
               <h3 className="font-semibold mb-2">UNIT UNDER TEST READINGS (UUT) — DKD R-6-1</h3>
               <div className="overflow-x-auto">
-                <table className="min-w-[820px] border text-xs mb-3">
+                <table className="w-full table-fixed border text-xs mb-3">
+                  <colgroup>
+                    <col style={{ width: '110px' }} />
+                    <col style={{ width: '1fr' }} />
+                    <col style={{ width: '1fr' }} />
+                    <col style={{ width: '1fr' }} />
+                    <col style={{ width: '1fr' }} />
+                    <col style={{ width: '90px' }} />
+                    <col style={{ width: '90px' }} />
+                    <col style={{ width: '90px' }} />
+                    <col style={{ width: '140px' }} />
+                    <col style={{ width: '140px' }} />
+                    <col style={{ width: '160px' }} />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th className="border p-1" rowSpan={2}>APPLIED</th>
@@ -564,7 +626,7 @@ function SphygmomanometerCalibration() {
             </CardSection>
           </>
         );
-      case 3:
+      case 4:
         return (
           <>
             <CardSection>
@@ -594,7 +656,7 @@ function SphygmomanometerCalibration() {
             </CardSection>
           </>
         );
-      case 4:
+      case 5:
         return (
           <>
             <CardSection>
@@ -628,7 +690,7 @@ function SphygmomanometerCalibration() {
             </CardSection>
           </>
         );
-      case 5:
+      case 6:
         return (
           <CardSection>
             <h2 className="text-lg font-bold mb-3">Results & Summary</h2>
