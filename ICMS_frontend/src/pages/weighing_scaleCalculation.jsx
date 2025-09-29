@@ -522,36 +522,6 @@ const u_rep_all = stddevRepeat;
     return val > 0 ? val : 1; // default to 1 g if not provided
   };
 
-  // Add this helper function for per-row expanded uncertainty
-  function getExpandedUncertainty(idx) {
-    const mpe = mpeByCol[idx] || 0;
-    const mpe_g_row = mpe / 1000;
-    const d_row = getReadability();
-    // Updated formulas to match Excel (with sqrt(3))
-    const u_ref_row = mpe_g_row / (3 * Math.sqrt(3));
-    const u_air_row = mpe_g_row / (4 * Math.sqrt(3));
-    const u_drift_row = mpe_g_row / (3 * Math.sqrt(3));
-    const u_conv_row = mpe_g_row / (3 * Math.sqrt(3));
-    const u_round0_row = d_row / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
-    const u_round1_row = d_row / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
-    let Imax_row = 0;
-    if (idx < 4) {
-      const ind = parseFloat(eccRows[cornerIndices[idx]]?.indication);
-      Imax_row = isNaN(centerIndication) || isNaN(ind) ? 0 : ind - centerIndication;
-    } else {
-      Imax_row = maxImax;
-    }
-    // Eccentricity set to 0 and excluded from calculations
-    const u_ecc_row = 0;
-    const u_rep_row = stddevRepeat;
-    // Include both rounding components; exclude eccentricity from combination
-    const u_components_row = [u_ref_row, u_air_row, u_drift_row, u_conv_row, u_round0_row, u_round1_row, u_rep_row];
-    const sumsq = u_components_row.reduce((sum, u) => sum + u * u, 0);
-    const u_combined_row = Math.sqrt(sumsq);
-    const kVal = 2;
-    const U_expanded_row = kVal * u_combined_row;
-    return U_expanded_row;
-  }
 
   // Reference weight uncertainty (MPE/(3*sqrt(3)))
   const mpeNum = safeNum(mpe);
@@ -569,16 +539,8 @@ const u_rep_all = stddevRepeat;
   const u_round1 = d / (2 * Math.sqrt(3));
   // Backward-compatible alias for displays/result payloads expecting u_round
   const u_round = u_round0;
-  // Eccentricity - set to 0 and exclude from calculations
-  const u_ecc = 0;
   // Repeatability (s)
   const u_rep = stddevRepeat;
-
-  // Combine all standard uncertainties (include both rounding; exclude eccentricity)
-  const u_components = [u_ref, u_air, u_drift, u_conv, u_round0, u_round1, u_rep];
-  const u_combined = Math.sqrt(u_components.reduce((sum, u) => sum + u * u, 0));
-  const k = 2; // coverage factor
-  const U_expanded = k * u_combined;
 
   // Calculate Test Load (g) for each column
   const testLoadByCol = [1,2,3,4,5,6].map(num =>
@@ -598,6 +560,49 @@ const u_rep_all = stddevRepeat;
   const [linearityResults, setLinearityResults] = useState([
     { indication: '' }, { indication: '' }, { indication: '' }, { indication: '' }, { indication: '' }, { indication: '' }
   ]);
+
+  // Calculate the biggest nominal value from linearity test weights
+  const biggestNominalValue = Math.max(...linearityRows
+    .filter(row => row.nominalValue && !isNaN(parseFloat(row.nominalValue)))
+    .map(row => parseFloat(row.nominalValue))
+  ) || 1; // fallback to 1 if no values
+
+  // Eccentricity uncertainty: (FirstLinearityIndication × Imax) / (2 × BiggestNominalValue × √3)
+  const firstLinearityIndication = parseFloat(linearityResults[0]?.indication) || 0;
+  const u_ecc = (firstLinearityIndication * maxImax) / (2 * biggestNominalValue * Math.sqrt(3));
+
+  // Combine all standard uncertainties (include both rounding and eccentricity)
+  const u_components = [u_ref, u_air, u_drift, u_conv, u_round0, u_round1, u_ecc, u_rep];
+  const u_combined = Math.sqrt(u_components.reduce((sum, u) => sum + u * u, 0));
+  const k = 2; // coverage factor
+  const U_expanded = k * u_combined;
+
+  // Add this helper function for per-row expanded uncertainty
+  function getExpandedUncertainty(idx) {
+    const mpe = mpeByCol[idx] || 0;
+    const mpe_g_row = mpe / 1000;
+    const d_row = getReadability();
+    // Updated formulas to match Excel (with sqrt(3))
+    const u_ref_row = mpe_g_row / (3 * Math.sqrt(3));
+    const u_air_row = mpe_g_row / (4 * Math.sqrt(3));
+    const u_drift_row = mpe_g_row / (3 * Math.sqrt(3));
+    const u_conv_row = mpe_g_row / (3 * Math.sqrt(3));
+    const u_round0_row = d_row / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
+    const u_round1_row = d_row / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
+    // Use maxImax for all rows (consistent with Excel formula)
+    const Imax_row = maxImax;
+    // Eccentricity uncertainty: (FirstLinearityIndication × Imax) / (2 × BiggestNominalValue × √3)
+    const firstLinearityIndicationRow = parseFloat(linearityResults[0]?.indication) || 0;
+    const u_ecc_row = (firstLinearityIndicationRow * Imax_row) / (2 * biggestNominalValue * Math.sqrt(3));
+    const u_rep_row = stddevRepeat;
+    // Include both rounding components and eccentricity in combination
+    const u_components_row = [u_ref_row, u_air_row, u_drift_row, u_conv_row, u_round0_row, u_round1_row, u_ecc_row, u_rep_row];
+    const sumsq = u_components_row.reduce((sum, u) => sum + u * u, 0);
+    const u_combined_row = Math.sqrt(sumsq);
+    const kVal = 2;
+    const U_expanded_row = kVal * u_combined_row;
+    return U_expanded_row;
+  }
 
   const handleResultIndicationChange = (idx, value) => {
     setLinearityResults(prev => prev.map((row, i) => i === idx ? { ...row, indication: value } : row));
@@ -684,42 +689,7 @@ const u_rep_all = stddevRepeat;
               <span className="text-[#2a9dab] font-semibold text-sm">Step 1: Equipment & Environmental Conditions</span>
             </div>
             
-            {/* Certificate Information Display */}
-            <div className="mb-5 p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <h3 className="text-sm font-semibold text-blue-800 mb-3">Certificate Information</h3>
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Customer Name:</label>
-                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
-                    {equipment.customerName || 'Loading...'}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Customer Address:</label>
-                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
-                    {equipment.customerAddress || 'Loading...'}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Reference No.:</label>
-                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
-                    {equipment.referenceNo || 'Loading...'}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Sample No.:</label>
-                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
-                    {equipment.sampleNo || 'Loading...'}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date Submitted:</label>
-                  <div className="px-3 py-2 bg-white border border-gray-300 rounded-md text-sm text-gray-900">
-                    {equipment.dateSubmitted || 'Loading...'}
-                  </div>
-                </div>
-              </div>
-            </div>
+            
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
               <div>
@@ -1144,24 +1114,14 @@ const u_rep_all = stddevRepeat;
                     const u_conv_row_budget = mpe_g_row_budget / (3 * Math.sqrt(3));
                     const u_round0_row_budget = d_row_budget / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
                     const u_round1_row_budget = d_row_budget / (2 * Math.sqrt(3)); // =Readability/(2*SQRT(3))
-                    // Calculate per-row Imax for eccentricity (Excel: each row has its own value)
-                    let Imax_row_budget = 0;
-                    if (idx < 4) {
-                      // Use the corresponding corner
-                      const ind = parseFloat(eccRows[cornerIndices[idx]]?.indication);
-                      Imax_row_budget = isNaN(centerIndication) || isNaN(ind) ? 0 : ind - centerIndication;
-                    } else {
-                      // Use the max of all corners
-                      Imax_row_budget = Math.max(...cornerIndices.map(i => {
-                        const ind = parseFloat(eccRows[i]?.indication);
-                        return isNaN(centerIndication) || isNaN(ind) ? 0 : ind - centerIndication;
-                      }));
-                    }
-                    // Eccentricity set to 0 and excluded from calculations
-                    const u_ecc_row_budget = 0;
+                    // Use maxImax for all rows (consistent with Excel formula)
+                    const Imax_row_budget = maxImax;
+                    // Eccentricity uncertainty: (FirstLinearityIndication × Imax) / (2 × BiggestNominalValue × √3)
+                    const firstLinearityIndicationBudget = parseFloat(linearityResults[0]?.indication) || 0;
+                    const u_ecc_row_budget = (firstLinearityIndicationBudget * Imax_row_budget) / (2 * biggestNominalValue * Math.sqrt(3));
                     // Use the same repeatability value for all rows (Excel logic)
                     const u_rep_row_budget = u_rep_all;
-                    const u_components_row_budget = [u_ref_row_budget, u_air_row_budget, u_drift_row_budget, u_conv_row_budget, u_round0_row_budget, u_round1_row_budget, u_rep_row_budget];
+                    const u_components_row_budget = [u_ref_row_budget, u_air_row_budget, u_drift_row_budget, u_conv_row_budget, u_round0_row_budget, u_round1_row_budget, u_ecc_row_budget, u_rep_row_budget];
                     // Calculate sum of squares with full precision
                     const sumsq_budget = u_components_row_budget.reduce((sum, u) => sum + u * u, 0);
                     // Only round the final result for display
@@ -1178,7 +1138,7 @@ const u_rep_all = stddevRepeat;
                         <td className="border px-2 py-1 text-right font-mono">{u_conv_row_budget.toFixed(10)}</td>
                         <td className="border px-2 py-1 text-right font-mono">{u_round0_row_budget.toFixed(10)}</td>
                         <td className="border px-2 py-1 text-right font-mono">{u_round1_row_budget.toFixed(10)}</td> {/* u(δI_digl) */}
-                        <td className="border px-2 py-1 text-right font-mono">{(0).toFixed(10)}</td>
+                        <td className="border px-2 py-1 text-right font-mono">{u_ecc_row_budget.toFixed(10)}</td>
                         <td className="border px-2 py-1 text-right font-mono">{u_rep_row_budget.toFixed(10)}</td>
                         <td className="border px-2 py-1 text-right font-mono">{u_combined_row_budget.toFixed(6)}</td>
                         <td className="border px-2 py-1 text-center">{kVal.toFixed(2)}</td>
@@ -1315,7 +1275,7 @@ const u_rep_all = stddevRepeat;
         calibration_type: 'Weighing Scale',
         input_data: inputData,
         result_data: resultData,
-        calibrated_by: user?.id || null,
+        calibrated_by: user?.id || user?.client_id || null,
         date_started: new Date().toISOString(),
         date_completed: null // Don't mark as completed for auto-save
       });
@@ -1445,7 +1405,8 @@ const u_rep_all = stddevRepeat;
             { id: 2, name: "Front Left" },
             { id: 3, name: "Back Left" },
             { id: 4, name: "Back Right" },
-            { id: 5, name: "Front Right" }
+            { id: 5, name: "Front Right" },
+            { id: 6, name: "Center" }
           ],
           center_indication_g: centerIndication || 0,
           max_eccentricity_g: maxImax
@@ -1527,7 +1488,7 @@ const u_rep_all = stddevRepeat;
         calibration_type: 'Weighing Scale',
         input_data: inputData,
         result_data: resultData,
-        calibrated_by: user?.id || null,
+        calibrated_by: user?.id || user?.client_id || null,
         date_started: new Date().toISOString(),
         date_completed: new Date().toISOString()
       });
@@ -1564,7 +1525,7 @@ const u_rep_all = stddevRepeat;
         calibration_type: 'Weighing Scale',
         input_data: inputData,
         result_data: resultData,
-        calibrated_by: user?.id || null,
+        calibrated_by: user?.id || user?.client_id || null,
         date_started: new Date().toISOString(),
         date_completed: new Date().toISOString() // Mark as completed
       });

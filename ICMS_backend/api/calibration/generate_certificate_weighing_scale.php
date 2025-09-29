@@ -430,7 +430,7 @@ if (count($repeatabilityReadings) > 1) {
 }
 
 $pdf->SetFont('Arial', 'B', 10); // Increased from 8 to 10 for bigger font
-$pdf->Cell(0, 5, 'Std. Deviation: ' . (is_numeric($stdDev) ? number_format((float)$stdDev, 6, '.', '') : '0.000000') . ' g', 0, 1, 'C'); // Center aligned without box
+$pdf->Cell(0, 5, 'Std. Deviation: ' . (is_numeric($stdDev) ? number_format((float)$stdDev, 4, '.', '') : '0.0000') . ' g', 0, 1, 'C'); // Center aligned without box
 $pdf->Ln(0.5); // Increased from 0.2 to 0.5
 
 // Eccentricity Table - Compact with diagram
@@ -452,8 +452,8 @@ $pdf->Cell($colWidths[2], 5, "Error (g)", 1, 1, 'C');
 $pdf->SetFont('Arial', '', 7);
 
 $eccRows = $input_data['eccRows'] ?? [];
-$positions = ['Center', 'Bottom Left', 'Top Left', 'Top Right', 'Bottom Right'];
-for ($i = 0; $i < 5; $i++) {
+$positions = ['Center', 'Back Left', 'Front Left', 'Front Right', 'Back Right', 'Center'];
+for ($i = 0; $i < 6; $i++) {
     $indication = isset($eccRows[$i]['indication']) && is_numeric($eccRows[$i]['indication']) ? number_format((float)$eccRows[$i]['indication'], 0, '.', '') : '0';
     
     // Get error from result data if available, otherwise from input data
@@ -463,7 +463,7 @@ for ($i = 0; $i < 5; $i++) {
     } elseif (isset($eccRows[$i]['error'])) {
         $error = $eccRows[$i]['error'];
     }
-    $error = is_numeric($error) ? number_format((float)$error, 3, '.', '') : '0.000';
+    $error = is_numeric($error) ? number_format((float)$error, 0, '.', '') : '0';
     
     $pdf->SetXY($tableX, $pdf->GetY());
     $pdf->Cell($colWidths[0], 5, $positions[$i], 1, 0, 'C'); // Reduced height from 6 to 5
@@ -554,21 +554,21 @@ $radius = $circleSize/2 - 4; // Further adjusted for smaller diagram
 
 // Get eccentricity data from database
 $eccRows = $input_data['eccRows'] ?? [];
-$positions = ['Center', 'Bottom Left', 'Top Left', 'Top Right', 'Bottom Right'];
+$positions = ['Center', 'Back Left', 'Front Left', 'Front Right', 'Back Right', 'Center'];
 
 // Draw positions based on actual data
-for ($i = 0; $i < 5; $i++) { // Draw all 5 positions
+for ($i = 0; $i < 5; $i++) { // Draw only 5 positions (exclude 6th center)
     $positionName = $positions[$i];
     $hasData = isset($eccRows[$i]) && isset($eccRows[$i]['indication']);
     
     // Calculate position coordinates
-    if ($i == 0) { // Center
+    if ($i == 0) { // Center position
         $posX = $centerX;
         $posY = $centerY;
     } else { // Corner positions - match the diagram layout exactly
-        // Position 2: Bottom Left (225°), Position 3: Top Left (135°), 
-        // Position 4: Top Right (45°), Position 5: Bottom Right (315°)
-        $angles = [0, 225, 135, 45, 315]; // Center, Bottom Left, Top Left, Top Right, Bottom Right
+        // Position 2: Back Left (135°), Position 3: Front Left (225°), 
+        // Position 4: Front Right (315°), Position 5: Back Right (45°)
+        $angles = [0, 135, 225, 315, 45]; // Center, Back Left, Front Left, Front Right, Back Right
         $angle = $angles[$i];
         $posX = $centerX + $radius * 0.7 * cos(deg2rad($angle));
         $posY = $centerY + $radius * 0.7 * sin(deg2rad($angle));
@@ -597,22 +597,22 @@ $legendY = $platformY;
 $pdf->SetXY($legendX, $legendY);
 $pdf->SetFont('Arial', '', 7);
 
-// Draw legend
+// Draw legend - show only 5 positions (exclude 6th center)
 for ($i = 0; $i < 5; $i++) {
     $positionName = $positions[$i];
     
-    $pdf->SetXY($legendX, $legendY + ($i * 4));
-    $pdf->Cell(0, 4, ($i + 1) . ' - ' . $positionName, 0, 1, 'L');
+    $pdf->SetXY($legendX, $legendY + ($i * 3.5)); // Reduced spacing from 4 to 3.5 to fit better
+    $pdf->Cell(0, 3.5, ($i + 1) . ' - ' . $positionName, 0, 1, 'L');
 }
 
 // Add title below the diagram
-$titleY = $platformY + $platformSize + 5;
+$titleY = $platformY + $platformSize + 5; // Restored spacing for 5 legend items
 $pdf->SetXY($diagramX, $titleY);
 $pdf->SetFont('Arial', 'B', 8);
 $pdf->Cell(0, 6, 'Positions on eccentricity test', 0, 1, 'L');
 
 // Move to next section
-$pdf->SetY(max($tableStartY + 6 * 6 + 5, $titleY + 5)); // Reduced spacing to move Linearity table upward
+$pdf->SetY(max($tableStartY + 7 * 6 + 5, $titleY + 5)); // Updated spacing for 6 rows
 $pdf->Ln(0.5); // Reduced spacing
 
 // Linearity Table - Compact
@@ -649,7 +649,14 @@ for ($i = 0; $i < 6; $i++) {
     }
     $error = is_numeric($error) ? number_format((float)$error, 3, '.', '') : '0.000';
     
-    $uncertainty = isset($result_data['U_expanded']) && is_numeric($result_data['U_expanded']) ? number_format((float)$result_data['U_expanded'], 4, '.', '') : '0.0000';
+    // Get uncertainty from result data per-row if available, otherwise use single U_expanded
+    $uncertainty = 0.0000;
+    if (isset($result_data['measurement_results']['linearity']['measurements'][$i]['uncertainty_g'])) {
+        $uncertainty = $result_data['measurement_results']['linearity']['measurements'][$i]['uncertainty_g'];
+    } elseif (isset($result_data['U_expanded']) && is_numeric($result_data['U_expanded'])) {
+        $uncertainty = $result_data['U_expanded'];
+    }
+    $uncertainty = is_numeric($uncertainty) ? number_format((float)$uncertainty, 4, '.', '') : '0.0000';
     $pdf->Cell($colWidths[0], 5, ($i + 1), 1, 0, 'C');
     $pdf->Cell($colWidths[1], 5, $load, 1, 0, 'C');
     $pdf->Cell($colWidths[2], 5, $indication, 1, 0, 'C');
@@ -834,14 +841,24 @@ $pdf->Ln(3);
 $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(0, 6, 'ENVIRONMENTAL CONDITIONS:', 0, 1, 'L');
 $pdf->SetFont('Arial', '', 10);
-// Calculate average values (AVERAGE formula: =AVERAGE(start, end))
-$tempStart = $input_data['equipment']['tempStart'] ?? '23.0';
-$tempEnd = $input_data['equipment']['tempEnd'] ?? '23.0';
-$temp = ($tempStart + $tempEnd) / 2;
+// Calculate average values using Excel AVERAGE formula: =AVERAGE(start:end)
+$tempStart = floatval($input_data['equipment']['tempStart'] ?? '23.0');
+$tempEnd = floatval($input_data['equipment']['tempEnd'] ?? '23.0');
+// Excel AVERAGE function: average of all non-empty numeric values in range
+// Filter out empty strings, 0 values, and non-realistic temperatures (< 15°C or > 40°C)
+$tempValues = array_filter([$tempStart, $tempEnd], function($val) { 
+    return is_numeric($val) && $val !== '' && $val > 0 && $val >= 15 && $val <= 40; 
+});
+$temp = count($tempValues) > 0 ? array_sum($tempValues) / count($tempValues) : 23.0;
 
-$humidityStart = $input_data['equipment']['humidityStart'] ?? '45';
-$humidityEnd = $input_data['equipment']['humidityEnd'] ?? '45';
-$humidity = ($humidityStart + $humidityEnd) / 2;
+$humidityStart = floatval($input_data['equipment']['humidityStart'] ?? '45');
+$humidityEnd = floatval($input_data['equipment']['humidityEnd'] ?? '45');
+// Excel AVERAGE function: average of all non-empty numeric values in range
+// Filter out empty strings, 0 values, and non-realistic humidity (< 10% or > 90%)
+$humidityValues = array_filter([$humidityStart, $humidityEnd], function($val) { 
+    return is_numeric($val) && $val !== '' && $val > 0 && $val >= 10 && $val <= 90; 
+});
+$humidity = count($humidityValues) > 0 ? array_sum($humidityValues) / count($humidityValues) : 45;
 $pdf->Cell(40, 6, 'Ambient Temperature :', 0, 0, 'L');
 $pdf->Cell(20, 6, $temp . ' C', 0, 1, 'L');
 $pdf->Cell(40, 6, 'Relative Humidity :', 0, 0, 'L');
