@@ -15,9 +15,6 @@ const lineGraphGreen = (
   <svg width="48" height="24" fill="none" viewBox="0 0 48 24"><polyline points="0,20 10,18 20,19 30,15 40,16 48,10" stroke="#10b981" strokeWidth="2" fill="none"/></svg>
 );
 
-const downloadIcon = (
-  <svg width="20" height="20" fill="none" viewBox="0 0 20 20"><path d="M10 3v10m0 0l-3-3m3 3l3-3" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><rect x="4" y="15" width="12" height="2" rx="1" fill="#64748b"/></svg>
-);
 const menuIcon = (
   <svg width="20" height="20" fill="none" viewBox="0 0 20 20"><circle cx="4" cy="10" r="1.5" fill="#64748b"/><circle cx="10" cy="10" r="1.5" fill="#64748b"/><circle cx="16" cy="10" r="1.5" fill="#64748b"/></svg>
 );
@@ -289,7 +286,6 @@ const Dashboard = () => {
         <div className="bg-white rounded-xl shadow p-6 flex flex-col h-full justify-start max-h-[330px] items-center">
           <div className="flex items-center justify-between mb-1 w-full">
             <h2 className="text-xl font-bold text-[#2d2d2d]">Total Clients</h2>
-            <div className="flex items-center">{downloadIcon}</div>
           </div>
           {/* Donut Chart for Gender Distribution */}
           <div className="w-48 h-48 flex items-center justify-center">
@@ -409,7 +405,7 @@ const Dashboard = () => {
             </div>
           </div>
           <div className="w-full rounded-xl p-2 pb-8">
-            <div className="border rounded-xl overflow-hidden mb-4">
+            <div className="border rounded-xl overflow-visible mb-4">
               <div className="grid grid-cols-7 text-xs text-gray-500 bg-gray-50">
                 {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d => (
                   <div key={d} className="px-3 py-2 border-b">{d}</div>
