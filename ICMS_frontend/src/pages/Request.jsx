@@ -1923,13 +1923,17 @@ const Reservations = () => {
   };
 
   const handleAcceptReservation = (reservationId) => {
+    console.log('handleAcceptReservation called with ID:', reservationId);
     setSelectedReservationId(reservationId);
     setShowAcceptConfirm(true);
   };
 
   const confirmAcceptReservation = async () => {
+    console.log('confirmAcceptReservation called with selectedReservationId:', selectedReservationId);
     try {
+      console.log('Making API call to updateRequestStatus...');
       await apiService.updateRequestStatus({ id: selectedReservationId, status: 'in_progress' });
+      console.log('API call successful');
       toast.success('Reservation accepted!');
       // Create transaction after acceptance
       const reservation = reservations.find(r => r.id === selectedReservationId);
@@ -1949,6 +1953,7 @@ const Reservations = () => {
       fetchReservations();
       window.dispatchEvent(new Event('reservation-updated'));
     } catch (error) {
+      console.error('Error in confirmAcceptReservation:', error);
       toast.error('Failed to accept reservation.');
     } finally {
       setShowAcceptConfirm(false);
