@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // API service configuration
 const API_BASE_URL = import.meta.env.DEV 
-  ? 'http://localhost/ICMS_DOST-%20PSTO/DOST-ICMS/ICMS_backend'
+  ? 'http://localhost/ICMS_DOST-%20PSTO/ICMS_backend'
   : '/api';
 
 const api = axios.create({
