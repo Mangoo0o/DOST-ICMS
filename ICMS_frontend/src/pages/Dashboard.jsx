@@ -47,10 +47,10 @@ const Dashboard = () => {
           let requestsCount = data.records.length;
           let totalPayments = 0;
           data.records.forEach(t => {
-            // Count calibrated equipment (if needed, you can adjust this logic)
-            if (Array.isArray(t.equipment)) {
-              t.equipment.forEach(eq => {
-                if (eq.status && typeof eq.status === 'string' && eq.status.toLowerCase() === 'completed') {
+            // Count calibrated equipment based on is_calibrated field
+            if (Array.isArray(t.sample)) {
+              t.sample.forEach(eq => {
+                if (eq.is_calibrated === 1 || eq.is_calibrated === true) {
                   calibratedCount++;
                 }
               });

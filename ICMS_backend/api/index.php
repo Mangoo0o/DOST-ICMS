@@ -23,6 +23,11 @@ if ($api_index !== false) {
 $endpoint = isset($uri_parts[0]) ? $uri_parts[0] : '';
 $action = isset($uri_parts[1]) ? $uri_parts[1] : '';
 
+// Remove query parameters from action
+if (strpos($action, '?') !== false) {
+    $action = substr($action, 0, strpos($action, '?'));
+}
+
 error_log("Endpoint: " . $endpoint);
 error_log("Action: " . $action);
 

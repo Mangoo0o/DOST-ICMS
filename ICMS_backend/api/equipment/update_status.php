@@ -19,7 +19,12 @@ if (empty($data['id']) || empty($data['status'])) {
 $id = $data['id'];
 $status = $data['status'];
 
-$stmt = $db->prepare('UPDATE sample SET status = :status WHERE id = :id');
+// Update both status and is_calibrated fields
+if ($status === 'completed') {
+    $stmt = $db->prepare('UPDATE sample SET status = :status, is_calibrated = 1 WHERE id = :id');
+} else {
+    $stmt = $db->prepare('UPDATE sample SET status = :status WHERE id = :id');
+}
 $stmt->bindParam(':status', $status);
 $stmt->bindParam(':id', $id, PDO::PARAM_INT);
 

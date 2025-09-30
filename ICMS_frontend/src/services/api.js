@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // API service configuration
 const API_BASE_URL = import.meta.env.DEV 
-  ? 'http://localhost/ICMS_DOST-%20PSTO/ICMS_backend'
+  ? 'http://localhost/ICMS_DOST-%20PSTO/DOST-ICMS/ICMS_backend'
   : '/api';
 
 const api = axios.create({
@@ -160,6 +160,11 @@ export const apiService = {
 
   async getReports() {
     return api.get('/reports');
+  },
+
+  async generateReport(params) {
+    const queryString = new URLSearchParams(params).toString();
+    return api.get(`/api/reports/generate_report.php?${queryString}`);
   },
 
   async saveCalibrationRecord(recordData) {

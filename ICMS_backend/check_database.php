@@ -104,3 +104,11 @@ if ($count > 0) {
 echo "<hr>";
 echo "<p><em>Database check completed at " . date('Y-m-d H:i:s') . "</em></p>";
 ?>
+
+
+
+
+
+
+
+

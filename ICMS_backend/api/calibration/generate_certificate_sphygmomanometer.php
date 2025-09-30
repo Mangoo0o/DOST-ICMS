@@ -100,6 +100,11 @@ class PDF extends FPDF {
 
 require_once '../config/cors.php';
 
+// Add cache-busting headers to prevent browser caching
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 // Configuration - Default values for sphygmomanometer certificates
 $DEFAULT_CONFIG = [
     'calibrator_name' => 'MA. FERNANDA I. BANDA',
@@ -144,8 +149,16 @@ if (!$record) {
     ];
 }
 
+
 $input_data = json_decode($record['input_data'], true);
 $result_data = isset($record['result_data']) ? json_decode($record['result_data'], true) : [];
+
+// DEBUG: Log maxDeviation array to a file for troubleshooting
+file_put_contents(__DIR__ . '/max_deviation_debug.log',
+    'sample_id: ' . $sample_id . "\n" .
+    'maxDeviation: ' . print_r(isset($result_data['maxDeviation']) ? $result_data['maxDeviation'] : 'NOT SET', true) . "\n",
+    FILE_APPEND
+);
 
 // If no calibration data exists, provide default values
 if (empty($input_data)) {
@@ -376,6 +389,19 @@ foreach ($test_pressures as $index => $pressure) {
             $maxDeviation = number_format(floor((float)$result_data['maxDeviation'][$index] * 100) / 100, 2);
         } elseif (isset($result_data['maxDeviation']) && is_array($result_data['maxDeviation'])) {
             $maxDeviation = number_format(floor((float)$result_data['maxDeviation'][$index] * 100) / 100, 2);
+        } else {
+            // Calculate maximum deviation on the fly if not available in result_data
+            $iprtMean = isset($result_data['iprtMean'][$index]) ? (float)$result_data['iprtMean'][$index] : 0;
+            $uutIncMean = isset($result_data['uutIncMean'][$index]) ? (float)$result_data['uutIncMean'][$index] : 0;
+            $uutDecMean = isset($result_data['uutDecMean'][$index]) ? (float)$result_data['uutDecMean'][$index] : 0;
+            
+            if ($iprtMean > 0 && ($uutIncMean > 0 || $uutDecMean > 0)) {
+                $deviationInc = $uutIncMean > 0 ? abs($uutIncMean - $iprtMean) : 0;
+                $deviationDec = $uutDecMean > 0 ? abs($uutDecMean - $iprtMean) : 0;
+                $maxDeviation = number_format(max($deviationInc, $deviationDec), 2);
+            } else {
+                $maxDeviation = '';
+            }
         }
     }
     
@@ -400,7 +426,7 @@ $pdf->SetFont('Arial', '', 8);
 $maxHysteresisError = '';
 if (isset($result_data['hysteresisMax'])) {
     if (is_array($result_data['hysteresisMax'])) {
-        $maxHysteresisError = number_format(floor(max((float)$result_data['hysteresisMax']) * 100) / 100, 2) . ' mmHg';
+        $maxHysteresisError = number_format(floor(max($result_data['hysteresisMax']) * 100) / 100, 2) . ' mmHg';
     } else {
         $maxHysteresisError = number_format(floor((float)$result_data['hysteresisMax'] * 100) / 100, 2) . ' mmHg';
     }
@@ -551,9 +577,15 @@ $pdf->Ln(2);
 $pdf->SetFont('Arial', '', 8);
 
 // Fetch standard gauge data from database
-$standard_stmt = $db->prepare('SELECT * FROM standard_gauges WHERE is_active = 1 ORDER BY id DESC LIMIT 1');
-$standard_stmt->execute();
-$standard_gauge = $standard_stmt->fetch(PDO::FETCH_ASSOC);
+$standard_gauge = null;
+try {
+    $standard_stmt = $db->prepare('SELECT * FROM standard_gauges WHERE is_active = 1 ORDER BY id DESC LIMIT 1');
+    $standard_stmt->execute();
+    $standard_gauge = $standard_stmt->fetch(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    // Table doesn't exist, use default values
+    $standard_gauge = null;
+}
 
 // Use database data or fallback to default values
 $standard_data = [
