@@ -173,7 +173,7 @@ const input = (props) => {
     <input
       {...props}
       onKeyDown={handleKeyDown}
-      className={`w-full px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] transition-all duration-200 text-xs bg-white shadow-sm hover:border-gray-400 ${props.className || ''}`}
+      className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] transition-all duration-200 text-sm bg-white shadow-sm hover:border-gray-400 ${props.className || ''}`}
       style={{
         transition: 'all 0.2s ease-in-out'
       }}
@@ -304,6 +304,14 @@ function ThermometerUncertaintyCalculator() {
   const veffVal = veff();
   const k = DEFAULT_K; // 1.97 for 95% confidence from spreadsheet
   const ue = k * uc;
+
+  // Determine acceptable uncertainty based on temperature (medical digital thermometers)
+  // Body temperature range ~35–42 °C: tolerance ±0.2 °C
+  const getAllowedUncertainty = (temperatureCelsius) => {
+    if (temperatureCelsius >= 35 && temperatureCelsius <= 42) return 0.2;
+    // Fallback: use same tolerance unless specified otherwise
+    return 0.2;
+  };
 
   // Stepper UI
   const renderStepper = () => (
@@ -470,7 +478,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[0][0] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
+                        className="w-full text-center px-3 py-2 border border-gray-300 rounded text-sm"
                         placeholder="50.0"
                       />
                     </td>
@@ -492,7 +500,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[1][0] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
+                        className="w-full text-center px-3 py-2 border border-gray-300 rounded text-sm"
                       />
                     </td>
                     <td className="border border-gray-300 px-2 py-1">
@@ -509,7 +517,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[2][0] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
+                        className="w-full text-center px-3 py-2 border border-gray-300 rounded text-sm"
                       />
                     </td>
                   </tr>
@@ -529,7 +537,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[0][1] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
+                        className="w-full text-center px-3 py-2 border border-gray-300 rounded text-sm"
                         placeholder="50.0"
                       />
                     </td>
@@ -551,7 +559,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[1][1] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
+                        className="w-full text-center px-3 py-2 border border-gray-300 rounded text-sm"
                       />
                     </td>
                     <td className="border border-gray-300 px-2 py-1">
@@ -568,7 +576,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[2][1] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
+                        className="w-full text-center px-3 py-2 border border-gray-300 rounded text-sm"
                       />
                     </td>
                   </tr>
@@ -588,7 +596,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[0][2] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
+                        className="w-full text-center px-3 py-2 border border-gray-300 rounded text-sm"
                         placeholder="50.0"
                       />
                     </td>
@@ -610,7 +618,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[1][2] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
+                        className="w-full text-center px-3 py-2 border border-gray-300 rounded text-sm"
                       />
                     </td>
                     <td className="border border-gray-300 px-2 py-1">
@@ -627,7 +635,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[2][2] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
+                        className="w-full text-center px-3 py-2 border border-gray-300 rounded text-sm"
                       />
                     </td>
                   </tr>
@@ -795,17 +803,23 @@ function ThermometerUncertaintyCalculator() {
                     <th className="border px-2 py-1">UUT Reading °C</th>
                     <th className="border px-2 py-1">Correction °C</th>
                     <th className="border px-2 py-1">Uncertainty of Measurement</th>
+                    <th className="border px-2 py-1">Allowed Uncertainty</th>
+                    <th className="border px-2 py-1">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {referenceData.map((row, index) => {
                     // Use the overall calculated uncertainty for all points
+                    const allowed = getAllowedUncertainty(row.temp);
+                    const passed = ue <= allowed;
                     return (
                       <tr key={index}>
                         <td className="border px-2 py-1 text-center">{row.temp.toFixed(3)}</td>
                         <td className="border px-2 py-1 text-center">{row.indicated.toFixed(1)}</td>
                         <td className="border px-2 py-1 text-center">{row.correction.toFixed(3)}</td>
                         <td className="border px-2 py-1 text-center">{ue.toFixed(2)}</td>
+                        <td className="border px-2 py-1 text-center">±{allowed.toFixed(1)} °C</td>
+                        <td className={`border px-2 py-1 text-center font-semibold ${passed ? 'text-green-700' : 'text-red-700'}`}>{passed ? 'Passed' : 'Failed'}</td>
                       </tr>
                     );
                   })}
@@ -820,7 +834,17 @@ function ThermometerUncertaintyCalculator() {
                   <div>Combined Standard Uncertainty (Uc): <span className="font-mono font-semibold">{uc.toFixed(4)} °C</span></div>
                   <div>Effective Degrees of Freedom (Veff): <span className="font-mono">{veffVal === Infinity ? '∞' : veffVal.toFixed(1)}</span></div>
                   <div>Coverage Factor (k): <span className="font-mono">{k}</span></div>
-                  <div className="text-sm font-bold">Expanded Uncertainty (Ue): <span className="font-mono">{ue.toFixed(4)} °C</span></div>
+                  <div className="text-sm font-bold flex items-center gap-2">Expanded Uncertainty (Ue): <span className="font-mono">{ue.toFixed(4)} °C</span>
+                    {(() => {
+                      const allowedAt36 = getAllowedUncertainty(36);
+                      const overallPass = ue <= allowedAt36;
+                      return (
+                        <span className={`ml-2 px-2 py-0.5 rounded text-xs ${overallPass ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                          {overallPass ? 'Passed' : 'Failed'} (vs ±{allowedAt36.toFixed(1)} °C at 36 °C)
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </div>
               </div>
             </div>

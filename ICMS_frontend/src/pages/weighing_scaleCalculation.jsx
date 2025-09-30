@@ -637,6 +637,28 @@ const u_rep_all = stddevRepeat;
     };
   });
 
+  // Compliance check: U_expanded at each calibration point must be <= (MPE/3) at that point
+  const mpeGByCol = mpeByCol.map(val => (val || 0) / 1000);
+  const expandedUncByCol = [0,1,2,3,4,5].map(idx => getExpandedUncertainty(idx));
+  const perPointCompliance = expandedUncByCol.map((U, idx) => U <= (mpeGByCol[idx] / 3));
+  const certificationPass = perPointCompliance.every(Boolean);
+
+  // Diagnostics for user checks
+  const perPointDetails = [0,1,2,3,4,5].map(idx => ({
+    idx: idx + 1,
+    U: expandedUncByCol[idx],
+    mpeG: mpeGByCol[idx],
+    limit: mpeGByCol[idx] / 3,
+    passed: perPointCompliance[idx]
+  }));
+  const d_readability = getReadability();
+  const hasMissingMPE = linearityRows.some(row => (
+    [1,2,3,4,5,6].some(n => row[`measurement${n}`]) && (!row.mpe || isNaN(Number(row.mpe)))
+  ));
+  const hasIncompleteIndications = linearityResults.some((r, i) => perPointDetails[i].mpeG > 0 && (r.indication === '' || isNaN(Number(r.indication))));
+  const repeatabilityLooksHigh = stddevRepeat > (100 * d_readability);
+  const readabilityLooksLarge = d_readability >= 10; // heuristic to flag unit mistakes
+
   // Stepper UI
   const renderStepper = () => (
     <div className="flex items-center justify-between mb-6">
@@ -1072,6 +1094,16 @@ const u_rep_all = stddevRepeat;
                 </tbody>
               </table>
             </div>
+            {/* Overall pass/fail based on U ≤ MPE/3 at each calibration point */}
+            <div className="mt-2 text-sm">
+              <span className="font-semibold">Certification Status: </span>
+              <span className={`font-bold ${certificationPass ? 'text-green-600' : 'text-red-600'}`}>
+                {certificationPass ? 'PASSED' : 'FAILED'}
+              </span>
+              <div className="text-xs text-gray-600 mt-1">
+                Rule: Expanded Uncertainty U (k=2) must be ≤ one-third of MPE at each point.
+              </div>
+            </div>
           </CardSection>
         );
       case 6:
@@ -1238,6 +1270,56 @@ const u_rep_all = stddevRepeat;
                   <div className="mb-2 text-base font-bold">
                     <span className="font-semibold">Expanded Uncertainty (U): </span>
                     <span className="font-mono">{U_expanded.toExponential(6)} g</span>
+                  </div>
+                  <div className="mt-3 text-base">
+                    <span className="font-semibold">Certification Status: </span>
+                    <span className={`font-bold ${certificationPass ? 'text-green-600' : 'text-red-600'}`}>
+                      {certificationPass ? 'PASSED' : 'FAILED'}
+                    </span>
+                  </div>
+                  {/* Diagnostics */}
+                  <div className="mt-4 text-xs">
+                    {!certificationPass && (
+                      <div className="mb-3 text-red-600 font-semibold">One or more calibration points exceed the limit U ≤ MPE/3.</div>
+                    )}
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full border text-xs mb-2">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="border px-2 py-1">Meas #</th>
+                            <th className="border px-2 py-1">U (g)</th>
+                            <th className="border px-2 py-1">MPE (g)</th>
+                            <th className="border px-2 py-1">Limit MPE/3 (g)</th>
+                            <th className="border px-2 py-1">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {perPointDetails.map(p => (
+                            <tr key={p.idx}>
+                              <td className="border px-2 py-1 text-center">{p.idx}</td>
+                              <td className="border px-2 py-1 text-right font-mono">{(p.U || 0).toFixed(6)}</td>
+                              <td className="border px-2 py-1 text-right font-mono">{(p.mpeG || 0).toFixed(6)}</td>
+                              <td className="border px-2 py-1 text-right font-mono">{(p.limit || 0).toFixed(6)}</td>
+                              <td className={`border px-2 py-1 text-center font-bold ${p.passed ? 'text-green-600' : 'text-red-600'}`}>{p.passed ? 'PASS' : 'FAIL'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                      {repeatabilityLooksHigh && (
+                        <li>Repeatability s appears large relative to readability. Check units and outliers in readings.</li>
+                      )}
+                      {readabilityLooksLarge && (
+                        <li>Readability looks high (≥ 10 g). Verify d is entered in grams (e.g., 0.1 not 100).</li>
+                      )}
+                      {hasMissingMPE && (
+                        <li>Some selected test weights have missing MPE values. Re-select weights or ensure MPE (mg) exists.</li>
+                      )}
+                      {hasIncompleteIndications && (
+                        <li>Some measurement indications are blank or invalid. Fill Step 5 indications for all active columns.</li>
+                      )}
+                    </ul>
                   </div>
                 </div>
               </div>

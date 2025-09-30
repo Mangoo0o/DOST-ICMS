@@ -824,7 +824,7 @@ const Calibration = () => {
       </div>
       {isViewCalibModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" style={{ zIndex: 10000 }}>
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] border border-[#2a9dab] flex flex-col">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] border border-[#2a9dab] flex flex-col">
             <div className="flex justify-between items-center mb-4 flex-shrink-0 p-6 pb-0">
               <h2 className="text-2xl font-bold text-[#2a9dab]">Calibration Record Details</h2>
               <button
@@ -1045,7 +1045,90 @@ const Calibration = () => {
             {calibRecord ? (
               <>
                 <div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                  <div><span className="font-semibold text-gray-700">Calibration Type:</span> <span className="text-gray-900">{calibRecord.calibration_type || 'Not specified'}</span></div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Calibration Type:</span>{' '}
+                    <span className="text-gray-900">{calibRecord.calibration_type || 'Not specified'}</span>
+                    {calibRecord.calibration_type === 'Thermometer' && (
+                      (() => {
+                        let result = calibRecord?.result_data || {};
+                        try { result = typeof result === 'string' ? JSON.parse(result) : result; } catch { result = {}; }
+                        const ueVal = Number(result.u_e ?? result.ue);
+                        const allowed = 0.2; // Medical digital thermometers (35–42 °C)
+                        const passed = !isNaN(ueVal) && ueVal <= allowed;
+                        return (
+                          <span className={`ml-2 px-2 py-0.5 rounded text-xs font-semibold inline-block ${passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {passed ? 'Passed' : 'Failed'}
+                          </span>
+                        );
+                      })()
+                    )}
+                    {calibRecord.calibration_type === 'Thermohygrometer' && (
+                      (() => {
+                        // Determine overall pass from temp (±0.5 °C) and humidity (±2 %rh)
+                        let input = calibRecord?.input_data || {};
+                        let result = calibRecord?.result_data || {};
+                        try { input = typeof input === 'string' ? JSON.parse(input) : input; } catch { input = {}; }
+                        try { result = typeof result === 'string' ? JSON.parse(result) : result; } catch { result = {}; }
+                        const avg = arr => Array.isArray(arr) && arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : NaN;
+                        const TEMP_MPE = 0.5;
+                        const HUMIDITY_MPE = 2;
+                        const tempPasses = [0,1,2].map(i => {
+                          const ref = input?.refReadings?.temp?.[i] || [];
+                          const uuc = input?.uucReadings?.temp?.[i] || [];
+                          const err = Math.abs((avg(ref) || 0) - (avg(uuc) || 0));
+                          return isFinite(err) && err <= TEMP_MPE;
+                        });
+                        const humPasses = [0,1,2].map(i => {
+                          const ref = input?.refReadings?.humidity?.[i] || [];
+                          const uuc = input?.uucReadings?.humidity?.[i] || [];
+                          const err = Math.abs((avg(ref) || 0) - (avg(uuc) || 0));
+                          return isFinite(err) && err <= HUMIDITY_MPE;
+                        });
+                        const hasAny = tempPasses.length > 0 || humPasses.length > 0;
+                        const passed = hasAny ? [...tempPasses, ...humPasses].every(Boolean) : false;
+                        return (
+                          <span className={`ml-2 px-2 py-0.5 rounded text-xs font-semibold inline-block ${passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {passed ? 'Passed' : 'Failed'}
+                          </span>
+                        );
+                      })()
+                    )}
+                    {calibRecord.calibration_type === 'Weighing Scale' && (
+                      (() => {
+                        // Overall pass: all per-point U <= MPE/3
+                        let result = calibRecord?.result_data || {};
+                        try { result = typeof result === 'string' ? JSON.parse(result) : result; } catch { result = {}; }
+                        const rowsFromLinearity = Array.isArray(result?.measurement_results?.linearity?.measurements) ? result.measurement_results.linearity.measurements : null;
+                        const rowsFromResults = Array.isArray(result?.resultsRows) ? result.resultsRows : null;
+                        const rows = rowsFromLinearity || rowsFromResults || [];
+                        const perPoint = rows.map(r => {
+                          const U = Number(r?.uncertainty_g ?? r?.expandedUnc ?? 0);
+                          const mpeG = Number(r?.mpe_g ?? r?.mpeG ?? 0);
+                          const limit = mpeG / 3;
+                          return isFinite(U) && isFinite(limit) && U <= limit;
+                        });
+                        const passed = perPoint.length > 0 ? perPoint.every(Boolean) : false;
+                        return (
+                          <span className={`ml-2 px-2 py-0.5 rounded text-xs font-semibold inline-block ${passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {passed ? 'Passed' : 'Failed'}
+                          </span>
+                        );
+                      })()
+                    )}
+                    {calibRecord.calibration_type === 'Sphygmomanometer' && (
+                      (() => {
+                        let result = calibRecord?.result_data || {};
+                        try { result = typeof result === 'string' ? JSON.parse(result) : result; } catch { result = {}; }
+                        const overall = result?.uncertainty?.overallUncertaintyPass;
+                        const passed = overall === true; // default to false if undefined
+                        return (
+                          <span className={`ml-2 px-2 py-0.5 rounded text-xs font-semibold inline-block ${passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {passed ? 'Passed' : 'Failed'}
+                          </span>
+                        );
+                      })()
+                    )}
+                  </div>
                   <div><span className="font-semibold text-gray-700">Date:</span> <span className="text-gray-900">{calibRecord.created_at ? new Date(calibRecord.created_at).toLocaleString() : calibRecord.date_completed ? new Date(calibRecord.date_completed).toLocaleString() : 'Not available'}</span></div>
                 </div>
                 
@@ -1053,6 +1136,9 @@ const Calibration = () => {
                 <div className="overflow-x-auto">
                   {calibRecord.calibration_type === 'Thermohygrometer' ? (
                     <div>
+                      {(() => { /* Hardcoded MPE thresholds for Thermohygrometer */ })()}
+                      { /* Use constants inline to avoid scope issues */ }
+                      <div className="hidden">TEMP_MPE=0.5; HUMIDITY_MPE=2;</div>
                       {/* Temperature Results Table */}
                       <h3 className="font-semibold mb-2">A. TEMPERATURE INDICATOR TEST</h3>
                       <table className="w-full border text-xs mb-6 table-auto">
@@ -1061,6 +1147,8 @@ const Calibration = () => {
                             <th className="border p-1">REFERENCE TEMPERATURE</th>
                             <th className="border p-1">THERMO-HYGROMETER UNDER CALIBRATION READING</th>
                             <th className="border p-1">UNCERTAINTY OF CALIBRATION</th>
+                            <th className="border p-1">MPE</th>
+                            <th className="border p-1">Status</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1079,11 +1167,18 @@ const Calibration = () => {
                             // Get U value from result_data if available (array or single value)
                             let U_arr = result?.U_temp_arr || result?.U_temp || [];
                             if (!Array.isArray(U_arr)) U_arr = [U_arr,U_arr,U_arr];
+                            const refAvg = avg(ref);
+                            const uucAvg = avg(uuc);
+                            const err = Math.abs((isNaN(refAvg) ? 0 : refAvg) - (isNaN(uucAvg) ? 0 : uucAvg));
+                            const TEMP_MPE = 0.5;
+                            const passed = !isNaN(err) && err <= TEMP_MPE;
                             return (
                               <tr key={i}>
-                                <td className="border p-1">{avg(ref).toFixed(2)} °C</td>
-                                <td className="border p-1">{avg(uuc).toFixed(2)} °C</td>
+                                <td className="border p-1">{refAvg.toFixed(2)} °C</td>
+                                <td className="border p-1">{uucAvg.toFixed(2)} °C</td>
                                 <td className="border p-1">{U_arr[i] !== undefined && !isNaN(U_arr[i]) ? Number(U_arr[i]).toFixed(2) : ''} °C</td>
+                                <td className="border p-1">{TEMP_MPE} °C</td>
+                                <td className={`border p-1 font-semibold ${passed ? 'text-green-700' : 'text-red-600'}`}>{passed ? 'Passed' : 'Failed'}</td>
                               </tr>
                             );
                           })}
@@ -1097,6 +1192,8 @@ const Calibration = () => {
                             <th className="border p-1">REFERENCE HUMIDITY @ 23°C</th>
                             <th className="border p-1">THERMO-HYGROMETER UNDER CALIBRATION READING</th>
                             <th className="border p-1">UNCERTAINTY OF CALIBRATION</th>
+                            <th className="border p-1">MPE</th>
+                            <th className="border p-1">Status</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1111,11 +1208,18 @@ const Calibration = () => {
                             const avg = arr => arr && arr.length ? arr.reduce((a,b) => a+b,0)/arr.length : 0;
                             let U_arr = result?.U_humidity_arr || result?.U_humidity || [];
                             if (!Array.isArray(U_arr)) U_arr = [U_arr,U_arr,U_arr];
+                            const refAvg = avg(ref);
+                            const uucAvg = avg(uuc);
+                            const err = Math.abs((isNaN(refAvg) ? 0 : refAvg) - (isNaN(uucAvg) ? 0 : uucAvg));
+                            const HUMIDITY_MPE = 2;
+                            const passed = !isNaN(err) && err <= HUMIDITY_MPE;
                             return (
                               <tr key={i}>
-                                <td className="border p-1">{avg(ref).toFixed(2)} %rh</td>
-                                <td className="border p-1">{avg(uuc).toFixed(2)} %rh</td>
+                                <td className="border p-1">{refAvg.toFixed(2)} %rh</td>
+                                <td className="border p-1">{uucAvg.toFixed(2)} %rh</td>
                                 <td className="border p-1">{U_arr[i] !== undefined && !isNaN(U_arr[i]) ? Number(U_arr[i]).toFixed(2) : ''} %rh</td>
+                                <td className="border p-1">{HUMIDITY_MPE} %rh</td>
+                                <td className={`border p-1 font-semibold ${passed ? 'text-green-700' : 'text-red-600'}`}>{passed ? 'Passed' : 'Failed'}</td>
                               </tr>
                             );
                           })}
@@ -1153,7 +1257,9 @@ const Calibration = () => {
                   ) : calibRecord.calibration_type === 'Thermometer' ? (
                     <div>
                       {/* Thermometer Results Table */}
-                      <h3 className="font-semibold mb-2">UNCERTAINTY RESULTS</h3>
+                      <div className="mb-3 flex items-center gap-2">
+                        <h3 className="font-semibold">UNCERTAINTY RESULTS</h3>
+                      </div>
                       <table className="w-full border text-xs mb-6 table-auto">
                         <thead>
                           <tr>
@@ -1165,9 +1271,14 @@ const Calibration = () => {
                           {calibRecord.result_data && (() => {
                             try {
                               const result = typeof calibRecord.result_data === 'string' ? JSON.parse(calibRecord.result_data) : calibRecord.result_data;
+                              const ueVal = Number(result.u_e || result.ue);
+                              const allowed = 0.2;
+                              const passed = !isNaN(ueVal) && ueVal <= allowed;
                               return [
                                 { label: 'Combined Standard Uncertainty (Uc)', value: result.u_c || result.uc || 'N/A' },
-                                { label: 'Uncertainty of Calibration (Ue)', value: result.u_e || result.ue || 'N/A' },
+                                { label: 'Uncertainty of Calibration (Ue)', value: ueVal || 'N/A' },
+                                { label: 'Allowed Uncertainty (35–42 °C)', value: `±${allowed.toFixed(1)} °C` },
+                                { label: 'Status', value: passed ? 'Passed' : 'Failed' },
                                 { label: 'Effective Degrees of Freedom (Veff)', value: result.veff || result.v_eff || 'N/A' },
                                 { label: 'Coverage Factor (k)', value: result.k || 'N/A' }
                               ];
@@ -1175,6 +1286,8 @@ const Calibration = () => {
                               return [
                                 { label: 'Combined Standard Uncertainty (Uc)', value: 'N/A' },
                                 { label: 'Uncertainty of Calibration (Ue)', value: 'N/A' },
+                                { label: 'Allowed Uncertainty (35–42 °C)', value: '±0.2 °C' },
+                                { label: 'Status', value: 'N/A' },
                                 { label: 'Effective Degrees of Freedom (Veff)', value: 'N/A' },
                                 { label: 'Coverage Factor (k)', value: 'N/A' }
                               ];
@@ -1182,7 +1295,7 @@ const Calibration = () => {
                           })().map((row, i) => (
                             <tr key={i}>
                               <td className="border p-1">{row.label}</td>
-                              <td className="border p-1">{row.value}</td>
+                              <td className={`border p-1 ${row.label === 'Status' ? (row.value === 'Passed' ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold') : ''}`}>{row.value}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -2162,6 +2275,29 @@ function renderCombinedTable(inputData, resultData, calibrationType, calibRecord
                 <span className="font-semibold">Expanded Uncertainty (U): </span>
                 <span className="font-mono">{resultObj.U_expanded ? Number(resultObj.U_expanded).toExponential(6) : '0.000000e+0'} g</span>
               </div>
+              {/* Certification status (U ≤ MPE/3 overall result) */}
+              {(() => {
+                const rowsFromLinearity = Array.isArray(resultObj?.measurement_results?.linearity?.measurements) ? resultObj.measurement_results.linearity.measurements : null;
+                const rowsFromResults = Array.isArray(resultObj?.resultsRows) ? resultObj.resultsRows : null;
+                const rows = rowsFromLinearity || rowsFromResults || [];
+                const perPoint = rows.map((r, i) => {
+                  const U = Number(r.uncertainty_g ?? r.expandedUnc ?? 0);
+                  const mpeG = Number(r.mpe_g ?? r.mpeG ?? 0);
+                  const limit = mpeG / 3;
+                  const passed = U <= limit && isFinite(U) && isFinite(limit);
+                  return passed;
+                });
+                const hasAny = perPoint.length > 0;
+                const overallPass = hasAny ? perPoint.every(Boolean) : null;
+                return hasAny ? (
+                  <div className="mt-3 text-sm">
+                    <span className="font-semibold">Certification Status: </span>
+                    <span className={`font-bold ${overallPass ? 'text-green-600' : 'text-red-600'}`}>
+                      {overallPass ? 'PASSED' : 'FAILED'}
+                    </span>
+                  </div>
+                ) : null;
+              })()}
             </div>
             
           </div>
@@ -2252,6 +2388,21 @@ function renderCombinedTable(inputData, resultData, calibrationType, calibRecord
                   </tbody>
                 </table>
               </div>
+              {/* Uncertainty Validation (U ≤ MPE/3) placed below III on the right column */}
+              {resultObj?.uncertainty && (
+                <div>
+                  <div className="flex items-center justify-between p-3 rounded border bg-gray-50">
+                    <div className="text-sm">
+                      <div className="font-semibold">Uncertainty Validation (k = {formatValue(resultObj?.uncertainty?.k) || '2'}, MPE = ±{formatValue(resultObj?.uncertainty?.mpe_mmHg) || '4'} mmHg)</div>
+                      <div className="text-gray-600">Requirement: expanded uncertainty U ≤ MPE/3 ({formatValue(resultObj?.uncertainty?.threshold_mmHg)} mmHg)</div>
+                    </div>
+                    <div className={`${resultObj?.uncertainty?.overallUncertaintyPass === undefined || resultObj?.uncertainty?.overallUncertaintyPass === '' ? 'text-gray-500 bg-gray-100' : resultObj?.uncertainty?.overallUncertaintyPass ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'} px-3 py-1 rounded font-semibold`}>
+                      {resultObj?.uncertainty?.overallUncertaintyPass === undefined || resultObj?.uncertainty?.overallUncertaintyPass === '' ? 'INCOMPLETE' : resultObj?.uncertainty?.overallUncertaintyPass ? 'PASS' : 'FAIL'}
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-gray-600">Computed per applied pressure from UUT repeatability.</div>
+                </div>
+              )}
             </div>
 
             {/* Hysteresis Error */}

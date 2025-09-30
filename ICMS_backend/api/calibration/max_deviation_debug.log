@@ -38,3 +38,15 @@ sample_id: 51
 maxDeviation: NOT SET
 sample_id: [correct_sample_id]
 maxDeviation: NOT SET
+sample_id: 68
+maxDeviation: Array
+(
+    [0] => 0
+    [1] => 0.66
+    [2] => 0.57
+    [3] => 2.26
+    [4] => 2.48
+    [5] => 15
+    [6] => 1.33
+)
+

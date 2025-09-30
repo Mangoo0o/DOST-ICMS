@@ -92,6 +92,10 @@ function SphygmomanometerCalibration() {
   const BAR_TO_MMHG = 750.06156099999998;
   const mmHgToKPa = (mmHg) => (mmHg === '' || isNaN(Number(mmHg))) ? '' : Number((Number(mmHg) / KPA_TO_MMHG).toFixed(6));
   const formatDec = (v, d = 6) => (v === '' || v === null || typeof v === 'undefined' || isNaN(Number(v))) ? '' : Number(v).toFixed(d);
+  // Expanded Uncertainty config
+  const MPE_MM_HG = 4; // per requirement and existing UI notes (±4 mmHg)
+  const COVERAGE_K = 2; // k = 2 for ~95% CL
+  const UNCERTAINTY_THRESHOLD = Number((MPE_MM_HG / 3).toFixed(2)); // U must be <= MPE/3
   const [appliedPressures, setAppliedPressures] = useState([0,50,100,150,200,250,300]);
   // IPRT (Standard) readings X1..X4 (up/down alternation)
   const empty7x4 = appliedPressures.map(() => ({ X1:"", X2:"", X3:"", X4:"" }));
@@ -137,6 +141,33 @@ function SphygmomanometerCalibration() {
     if (a===null && b===null) return '';
     return Number((Math.max(a||0,b||0)).toFixed(6));
   });
+
+  // Expanded Uncertainty (per point) from UUT repeatability only (available data)
+  const stdDevUUT = uutRows.map(r => {
+    const values = ['X1','X2','X3','X4']
+      .map(k => Number(r[k]))
+      .filter(v => !isNaN(v));
+    const n = values.length;
+    if (n < 2) return '';
+    const mean = values.reduce((a,b)=>a+b,0) / n;
+    const variance = values.reduce((acc, v)=> acc + Math.pow(v - mean, 2), 0) / (n - 1); // sample variance
+    return Number(Math.sqrt(variance).toFixed(6));
+  });
+  const standardUncertainty = stdDevUUT.map((s, idx) => {
+    if (s === '') return '';
+    const valuesCount = ['X1','X2','X3','X4']
+      .map(k => Number(uutRows[idx][k]))
+      .filter(v => !isNaN(v)).length;
+    if (valuesCount === 0) return '';
+    return Number((Number(s) / Math.sqrt(valuesCount)).toFixed(6));
+  });
+  const expandedUncertaintyU = standardUncertainty.map(u => u === '' ? '' : Number((Number(u) * COVERAGE_K).toFixed(2)));
+  const perPointPassU = expandedUncertaintyU.map(u => u === '' ? '' : (Number(u) <= UNCERTAINTY_THRESHOLD));
+  const overallUncertaintyPass = (() => {
+    const usable = perPointPassU.filter(v => v !== '');
+    if (usable.length === 0) return '';
+    return usable.every(Boolean);
+  })();
   // Pressure loss section (mmHg)
   const [lossPressures] = useState([60,120,180,240,300]);
   const [lossFirst, setLossFirst] = useState(["","","","",""]);
@@ -171,6 +202,10 @@ function SphygmomanometerCalibration() {
 
   // State for simple close confirmation
   const [showSimpleCloseConfirm, setShowSimpleCloseConfirm] = useState(false);
+
+  // State for uncertainty details modal and completion status
+  const [showUDetails, setShowUDetails] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
 
   // Back navigation with confirmation
   const {
@@ -223,6 +258,10 @@ function SphygmomanometerCalibration() {
           dateSubmitted: res.data.date_submitted || prev.dateSubmitted || '',
           dateCalibrated: res.data.date_calibrated || prev.dateCalibrated || prev.dateCalibrated,
         }));
+
+        if (res.data.status) {
+          setIsCompleted(String(res.data.status).toLowerCase() === 'completed');
+        }
 
         // Map graduation to device info if available (range removed to mirror Excel)
         setDeviceInfo(prev => ({
@@ -290,6 +329,16 @@ function SphygmomanometerCalibration() {
         hysteresisMax,
         lossRate,
         rapidExhaust: { start: rapidStartPressure, end: rapidEndPressure, elapsedSeconds: rapidElapsedSeconds, result: rapidPass },
+        uncertainty: {
+          k: COVERAGE_K,
+          mpe_mmHg: MPE_MM_HG,
+          threshold_mmHg: UNCERTAINTY_THRESHOLD,
+          stdDevUUT,
+          standardUncertainty,
+          expandedUncertaintyU,
+          perPointPassU,
+          overallUncertaintyPass,
+        },
       };
       await apiService.saveCalibrationRecord({
         sample_id: equipmentId,
@@ -698,6 +747,7 @@ function SphygmomanometerCalibration() {
           <CardSection>
             <h2 className="text-lg font-bold mb-3">Results & Summary</h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              
               <div className="space-y-4">
                 <div className="font-semibold mb-1">I. Maximum Deviation</div>
                 <div className="text-xs text-gray-600 mb-2">Per applied pressure: UUT increasing/decreasing vs IPRT, and maximum permissible error (± 4 mmHg).</div>
@@ -752,6 +802,23 @@ function SphygmomanometerCalibration() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between p-3 rounded border bg-gray-50">
+                    <div className="text-sm">
+                      <div className="font-semibold">Uncertainty Validation (k = {COVERAGE_K}, MPE = ±{MPE_MM_HG} mmHg)</div>
+                      <div className="text-gray-600">Requirement: expanded uncertainty U ≤ MPE/3 ({UNCERTAINTY_THRESHOLD} mmHg)</div>
+                    </div>
+                    <div className={`${overallUncertaintyPass === '' ? 'text-gray-500 bg-gray-100' : overallUncertaintyPass ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'} px-3 py-1 rounded font-semibold`}>
+                      {overallUncertaintyPass === '' ? 'INCOMPLETE' : overallUncertaintyPass ? 'PASS' : 'FAIL'}
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs text-gray-600">Computed per applied pressure from UUT repeatability.</span>
+                    {isCompleted && (
+                      <button onClick={()=> setShowUDetails(true)} className="text-xs px-3 py-1 rounded bg-[#2a9dab] text-white hover:bg-[#238a91]">View details</button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -847,6 +914,48 @@ function SphygmomanometerCalibration() {
             <div className="flex justify-end space-x-3">
               <button onClick={() => setShowSimpleCloseConfirm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">Cancel</button>
               <button onClick={() => { setShowSimpleCloseConfirm(false); handleConfirmBack(); }} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Uncertainty Details Modal */}
+      {showUDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Uncertainty Details (k = {COVERAGE_K})</h3>
+              <button onClick={()=> setShowUDetails(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            <div className="text-sm text-gray-700 mb-3">Threshold: U ≤ {UNCERTAINTY_THRESHOLD} mmHg (MPE/3 with MPE = {MPE_MM_HG} mmHg)</div>
+            <div className="overflow-x-auto">
+              <table className="w-full border text-xs">
+                <thead>
+                  <tr>
+                    <th className="border p-1">Applied (mmHg)</th>
+                    <th className="border p-1">Std Dev (s)</th>
+                    <th className="border p-1">Std Unc (u)</th>
+                    <th className="border p-1">Expanded U (k·u)</th>
+                    <th className="border p-1">Meets U ≤ MPE/3</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {appliedPressures.map((p,idx)=> (
+                    <tr key={`u-row-${p}`}>
+                      <td className="border p-1 text-center">{p}</td>
+                      <td className="border p-1 text-center">{stdDevUUT[idx]!==''? formatDec(stdDevUUT[idx], 3): ''}</td>
+                      <td className="border p-1 text-center">{standardUncertainty[idx]!==''? formatDec(standardUncertainty[idx], 3): ''}</td>
+                      <td className="border p-1 text-center">{expandedUncertaintyU[idx]!==''? formatDec(expandedUncertaintyU[idx], 2): ''}</td>
+                      <td className={`border p-1 text-center ${perPointPassU[idx] === '' ? '' : perPointPassU[idx] ? 'text-green-700' : 'text-red-700'}`}>
+                        {perPointPassU[idx] === '' ? '—' : perPointPassU[idx] ? 'PASS' : 'FAIL'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button onClick={()=> setShowUDetails(false)} className="px-4 py-2 rounded bg-[#2a9dab] text-white hover:bg-[#238a91]">Close</button>
             </div>
           </div>
         </div>

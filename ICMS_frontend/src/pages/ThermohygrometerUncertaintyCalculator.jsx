@@ -610,6 +610,9 @@ function ThermohygrometerUncertaintyCalculator() {
   const [resolutionHumidity, setResolutionHumidity] = useState(0.01);
   const [readabilityTemp, setReadabilityTemp] = useState(0.01);
   const [readabilityHumidity, setReadabilityHumidity] = useState(0.01);
+  // MPE thresholds (hardcoded for results display)
+  const TEMP_MPE = 0.5; // °C
+  const HUMIDITY_MPE = 2; // %rh
 
   // Update the standardReference card to use ModernInput for these fields
   const standardReference = (
@@ -1247,6 +1250,8 @@ function ThermohygrometerUncertaintyCalculator() {
                   <th className="border p-1">REFERENCE TEMPERATURE</th>
                   <th className="border p-1">THERMO-HYGROMETER UNDER CALIBRATION READING</th>
                   <th className="border p-1">UNCERTAINTY OF CALIBRATION</th>
+                  <th className="border p-1">MPE</th>
+                  <th className="border p-1">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -1255,6 +1260,16 @@ function ThermohygrometerUncertaintyCalculator() {
                     <td className="border p-1">{avg(refReadings.temp[i]).toFixed(2)} °C</td>
                     <td className="border p-1">{avg(uucReadings.temp[i]).toFixed(2)} °C</td>
                     <td className="border p-1">{U_temp_arr && U_temp_arr[i] !== undefined ? U_temp_arr[i].toFixed(2) : ''} °C</td>
+                    <td className="border p-1">{TEMP_MPE} °C</td>
+                    {(() => {
+                      const refVal = avg(refReadings.temp[i]);
+                      const uucVal = avg(uucReadings.temp[i]);
+                      const err = Math.abs((isNaN(refVal) ? 0 : refVal) - (isNaN(uucVal) ? 0 : uucVal));
+                      const passed = !isNaN(err) && err <= TEMP_MPE;
+                      return (
+                        <td className={`border p-1 font-semibold ${passed ? 'text-green-700' : 'text-red-600'}`}>{passed ? 'Passed' : 'Failed'}</td>
+                      );
+                    })()}
                   </tr>
                 ))}
               </tbody>
@@ -1267,6 +1282,8 @@ function ThermohygrometerUncertaintyCalculator() {
                   <th className="border p-1">THERMO-HYGROMETER UNDER CALIBRATION READING</th>
                   <th className="border p-1">TEMPERATURE (°C)</th>
                   <th className="border p-1">UNCERTAINTY OF CALIBRATION</th>
+                  <th className="border p-1">MPE</th>
+                  <th className="border p-1">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -1276,6 +1293,16 @@ function ThermohygrometerUncertaintyCalculator() {
                     <td className="border p-1">{indicatedHumidity[i] !== undefined && indicatedHumidity[i] !== null ? Number(indicatedHumidity[i]).toFixed(2) : ''} %rh</td>
                     <td className="border p-1">{ambientTempAverages[i] !== '' ? ambientTempAverages[i] : ''} °C</td>
                     <td className="border p-1">{U_humidity_arr && U_humidity_arr[i] !== undefined ? Number(U_humidity_arr[i]).toFixed(2) : ''} %rh</td>
+                    <td className="border p-1">{HUMIDITY_MPE} %rh</td>
+                    {(() => {
+                      const refVal = Number(referenceHumidity[i]);
+                      const uucVal = Number(indicatedHumidity[i]);
+                      const err = Math.abs((isNaN(refVal) ? 0 : refVal) - (isNaN(uucVal) ? 0 : uucVal));
+                      const passed = !isNaN(err) && err <= HUMIDITY_MPE;
+                      return (
+                        <td className={`border p-1 font-semibold ${passed ? 'text-green-700' : 'text-red-600'}`}>{passed ? 'Passed' : 'Failed'}</td>
+                      );
+                    })()}
                   </tr>
                 ))}
               </tbody>

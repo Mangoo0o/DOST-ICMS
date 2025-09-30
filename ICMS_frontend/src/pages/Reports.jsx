@@ -3,9 +3,9 @@ import { toast } from 'react-hot-toast';
 import { MdDateRange, MdLocationOn, MdAssessment, MdDownload, MdRefresh, MdTrendingUp, MdPeople, MdInventory, MdAssignment } from 'react-icons/md';
 import { apiService } from '../services/api';
 
-// Get API base URL
+// Get API base URL (reuse same base path as api service)
 const API_BASE_URL = import.meta.env.DEV 
-  ? 'http://localhost/ICMS_DOST-%20PSTO/DOST-ICMS/ICMS_backend'
+  ? 'http://localhost/ICMS_DOST-%20PSTO/ICMS_backend'
   : '/api';
 
 const Reports = () => {
