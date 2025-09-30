@@ -1,6 +1,6 @@
  import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { MdScience, MdThermostat, MdCalculate, MdInfo, MdArrowBack } from 'react-icons/md';
+import { MdScience, MdThermostat, MdCalculate, MdInfo } from 'react-icons/md';
 import { FaThermometerHalf } from 'react-icons/fa';
 import { Toaster, toast } from 'react-hot-toast';
 import './uncertainty-print.css';
@@ -173,7 +173,7 @@ const input = (props) => {
     <input
       {...props}
       onKeyDown={handleKeyDown}
-      className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] transition-all duration-200 text-sm bg-white shadow-sm hover:border-gray-400 ${props.className || ''}`}
+      className={`w-full px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] transition-all duration-200 text-xs bg-white shadow-sm hover:border-gray-400 ${props.className || ''}`}
       style={{
         transition: 'all 0.2s ease-in-out'
       }}
@@ -221,10 +221,9 @@ function ThermometerUncertaintyCalculator() {
   const [rg, setRg] = useState(DEFAULT_RG);
   const [rd, setRd] = useState(DEFAULT_RD);
   const [repeatability, setRepeatability] = useState([
-    ['', '', ''], // Testpoint 1: 3 trials
-    ['', '', ''], // Testpoint 2: 3 trials  
-    ['', '', ''], // Testpoint 3: 3 trials
-    ['', '', '']  // Testpoint 4: 3 trials
+    ['', '', ''], // Testpoint 1: 3 trials (36°C)
+    ['', '', ''], // Testpoint 2: 3 trials (100°C)
+    ['', '', '']  // Testpoint 3: 3 trials (121°C)
   ]);
   
   // Reference standard data - temperature points and corrections
@@ -247,12 +246,13 @@ function ThermometerUncertaintyCalculator() {
   });
 
   // Calculations for repeatability
-  const validRepeat = Array.isArray(repeatability) && repeatability.every(testpoint => 
-    Array.isArray(testpoint) && testpoint.every(trial => trial !== '' && !isNaN(Number(trial)))
-  );
+  const validRepeat = Array.isArray(repeatability) && repeatability.length >= 3 && 
+    repeatability.slice(0, 3).every(testpoint => 
+      Array.isArray(testpoint) && testpoint.every(trial => trial !== '' && !isNaN(Number(trial)))
+    );
   
-  // Calculate repeatability for each testpoint
-  const repeatabilityResults = Array.isArray(repeatability) ? repeatability.map(testpoint => {
+  // Calculate repeatability for each testpoint (only first 3 testpoints)
+  const repeatabilityResults = Array.isArray(repeatability) ? repeatability.slice(0, 3).map(testpoint => {
     if (!Array.isArray(testpoint)) return { mean: 0, sr: 0, ur: 0, n: 3 };
     const vals = testpoint.map(Number);
     const n = vals.length;
@@ -470,7 +470,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[0][0] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
                         placeholder="50.0"
                       />
                     </td>
@@ -492,7 +492,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[1][0] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
                       />
                     </td>
                     <td className="border border-gray-300 px-2 py-1">
@@ -509,7 +509,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[2][0] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
                       />
                     </td>
                   </tr>
@@ -529,7 +529,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[0][1] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
                         placeholder="50.0"
                       />
                     </td>
@@ -551,7 +551,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[1][1] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
                       />
                     </td>
                     <td className="border border-gray-300 px-2 py-1">
@@ -568,7 +568,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[2][1] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
                       />
                     </td>
                   </tr>
@@ -588,7 +588,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[0][2] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
                         placeholder="50.0"
                       />
                     </td>
@@ -610,7 +610,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[1][2] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
                       />
                     </td>
                     <td className="border border-gray-300 px-2 py-1">
@@ -627,7 +627,7 @@ function ThermometerUncertaintyCalculator() {
                           newRepeatability[2][2] = e.target.value;
                           setRepeatability(newRepeatability);
                         }}
-                        className="w-full text-center px-3 py-3 border border-gray-300 rounded"
+                        className="w-full text-center px-2 py-1 border border-gray-300 rounded text-xs"
                       />
                     </td>
                   </tr>
@@ -639,13 +639,19 @@ function ThermometerUncertaintyCalculator() {
             {validRepeat && (
               <div className="bg-green-50 p-3 rounded border border-green-200">
                 <h4 className="text-sm font-semibold mb-2 text-green-800">Repeatability Calculation Summary</h4>
-                <div className="grid grid-cols-1 gap-2 text-xs">
-                  <div>Testpoint 1 - Average (x') = {repeatabilityResults[0]?.mean.toFixed(1) || 0}</div>
-                  <div>Testpoint 2 - Average (x') = {repeatabilityResults[1]?.mean.toFixed(1) || 0}</div>
-                  <div>Testpoint 3 - Average (x') = {repeatabilityResults[2]?.mean.toFixed(1) || 0}</div>
-                  <div className="mt-2">Overall Standard deviation (Sr) = {sr.toFixed(4)}</div>
-                  <div>Ur = Sr / √n = {sr.toFixed(4)} / √{n} = {ur.toFixed(4)} °C</div>
-                  <div>Formula: Sr = √(1/(n-1)[Σ(x-x')²])</div>
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div className="space-y-1">
+                    <div className="font-semibold text-green-700 mb-2">Testpoint Averages</div>
+                    <div>Testpoint 1 - Average (x') = {repeatabilityResults[0]?.mean.toFixed(1) || 0}</div>
+                    <div>Testpoint 2 - Average (x') = {repeatabilityResults[1]?.mean.toFixed(1) || 0}</div>
+                    <div>Testpoint 3 - Average (x') = {repeatabilityResults[2]?.mean.toFixed(1) || 0}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="font-semibold text-green-700 mb-2">Calculated Values</div>
+                    <div>Overall Standard deviation (Sr) = {sr.toFixed(4)}</div>
+                    <div>Ur = Sr / √n = {sr.toFixed(4)} / √{n} = {ur.toFixed(4)} °C</div>
+                    <div className="mt-2 text-gray-600">Formula: Sr = √(1/(n-1)[Σ(x-x')²])</div>
+                  </div>
                 </div>
               </div>
             )}
@@ -770,18 +776,6 @@ function ThermometerUncertaintyCalculator() {
               </div>
             </div>
 
-            {modernButton({
-              onClick: () => {
-                if (!validRepeat) {
-                  toast.error('Please enter all repeatability values.');
-                  return;
-                }
-                toast.success('Calculation complete!');
-                setCurrentStep(5);
-              },
-              className: 'mt-4',
-              children: 'Show Results',
-            })}
           </CardSection>
         );
       case 5: {
@@ -793,8 +787,8 @@ function ThermometerUncertaintyCalculator() {
             </div>
             
             <div className="mb-4">
-              <h2 className="text-lg font-semibold mb-2">Measurement Results</h2>
-              <table className="min-w-full border text-sm mb-4">
+              <h2 className="text-base font-semibold mb-2">Measurement Results</h2>
+              <table className="min-w-full border text-xs mb-4">
                 <thead>
                   <tr className="bg-gray-100">
                     <th className="border px-2 py-1">Standard Reading °C</th>
@@ -820,20 +814,20 @@ function ThermometerUncertaintyCalculator() {
             </div>
 
             <div className="mb-4">
-              <h2 className="text-lg font-semibold mb-2">Final Results</h2>
+              <h2 className="text-base font-semibold mb-2">Final Results</h2>
               <div className="bg-green-50 p-4 rounded border border-green-200">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-2 gap-4 text-xs">
                   <div>Combined Standard Uncertainty (Uc): <span className="font-mono font-semibold">{uc.toFixed(4)} °C</span></div>
                   <div>Effective Degrees of Freedom (Veff): <span className="font-mono">{veffVal === Infinity ? '∞' : veffVal.toFixed(1)}</span></div>
                   <div>Coverage Factor (k): <span className="font-mono">{k}</span></div>
-                  <div className="text-lg font-bold">Expanded Uncertainty (Ue): <span className="font-mono">{ue.toFixed(4)} °C</span></div>
+                  <div className="text-sm font-bold">Expanded Uncertainty (Ue): <span className="font-mono">{ue.toFixed(4)} °C</span></div>
                 </div>
               </div>
             </div>
 
             <div className="mb-4">
-              <h2 className="text-lg font-semibold mb-2">Environment Conditions</h2>
-              <table className="min-w-full border text-sm">
+              <h2 className="text-base font-semibold mb-2">Environment Conditions</h2>
+              <table className="min-w-full border text-xs">
                 <thead>
                   <tr className="bg-gray-100">
                     <th className="border px-2 py-1">Parameter</th>
@@ -1254,7 +1248,7 @@ function ThermometerUncertaintyCalculator() {
           setDf1(input.df1 ?? DEFAULT_DF1);
           setRg(input.rg ?? DEFAULT_RG);
           setRd(input.rd ?? DEFAULT_RD);
-          setRepeatability(input.repeatability ?? [['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']]);
+          setRepeatability(input.repeatability ?? [['', '', ''], ['', '', ''], ['', '', '']]);
           setReferenceData(input.referenceData ?? [
             { temp: 0.00, indicated: 0.000, correction: 0.000, uncertainty: 0.023 },
             { temp: 50.00, indicated: 49.000, correction: 1.000, uncertainty: 0.023 },
@@ -1283,14 +1277,14 @@ function ThermometerUncertaintyCalculator() {
       <Toaster position="top-right" />
       <div className="w-full mx-auto">
         <div className="bg-white p-8 rounded-lg shadow-md w-full mb-8 border border-blue-100 relative">
-          {/* Back Button */}
+          {/* Close (X) Button */}
           <button
             onClick={handleBackClick}
-            className="absolute top-4 right-4 flex items-center gap-2 px-4 py-2 bg-[#2a9dab] text-white hover:bg-[#238a91] rounded-lg shadow-md transition-all duration-200 hover:shadow-lg"
-            title="Go back to calibration list"
+            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-lg h-8 w-8 flex items-center justify-center rounded hover:bg-gray-200 transition-colors"
+            title="Close"
+            aria-label="Close"
           >
-            <MdArrowBack className="w-5 h-5" />
-            <span className="text-sm font-medium">Back</span>
+            ✕
           </button>
           
           <div className="flex items-center mb-2 pr-20">
@@ -1333,9 +1327,7 @@ function ThermometerUncertaintyCalculator() {
                       }
                       // Validation for Step 2: Repeatability
                       if (currentStep === 2) {
-                        if (!validRepeat || (Array.isArray(repeatability) && repeatability.some(testpoint => 
-                          Array.isArray(testpoint) && testpoint.some(val => val === '' || isNaN(Number(val)))
-                        ))) {
+                        if (!validRepeat) {
                           toast.error('Please fill in all repeatability values for all testpoints before proceeding.', {
                             position: 'top-center',
                             duration: 4000,
