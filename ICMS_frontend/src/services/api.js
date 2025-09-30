@@ -106,6 +106,7 @@ export const apiService = {
   },
 
   async updateRequestStatus(statusData) {
+    console.log('API Service: updateRequestStatus called with:', statusData);
     // Use POST for broader server compatibility (some servers restrict PUT)
     return api.post('/api/request/update_status.php', statusData);
   },

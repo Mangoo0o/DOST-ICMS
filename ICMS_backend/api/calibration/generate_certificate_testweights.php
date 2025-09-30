@@ -187,6 +187,9 @@ if (!$record) {
 $input_data = json_decode($record['input_data'], true);
 $result_data = isset($record['result_data']) ? json_decode($record['result_data'], true) : [];
 
+// Debug: Log the result_data to see what's actually stored
+error_log("Debug - result_data: " . print_r($result_data, true));
+
 // Fetch sample details
 $sample_stmt = $db->prepare('SELECT * FROM sample WHERE id = :id');
 $sample_stmt->bindParam(':id', $sample_id, PDO::PARAM_INT);
@@ -254,9 +257,28 @@ $pdf->Cell(0, 6, 'MEASUREMENT RESULTS:', 0, 1, 'L');
 $pdf->Ln(2);
 
 // Get data from calibration record
-$nominal_value = $input_data['preparation']['testWeightNomval'] ?? null;
+$nominal_value = $input_data['preparation']['testWeightNominal'] ?? $input_data['preparation']['testWeightNomval'] ?? null;
 $identification = $serial_no ?: 'DS-2025-001';
-$conventional_mass = $result_data['meanDmci'] ?? null;
+// Use mc_t (conventional mass of test weight) instead of meanDmci
+$conventional_mass = $result_data['mc_t'] ?? null;
+// Get correction value (mc_t - m) for display in uncertainty column
+$correction = null;
+if (isset($result_data['correction']) && is_numeric($result_data['correction'])) {
+    $correction = (float)$result_data['correction'];
+} else {
+    // Fallback: calculate correction as mc_t - m if not stored
+    $mc_t = $result_data['mc_t'] ?? null;
+    $m = $nominal_value;
+    if (is_numeric($mc_t) && is_numeric($m)) {
+        $correction = (float)$mc_t - (float)$m;
+    }
+}
+// Debug: Log correction value
+error_log("Debug - correction value: " . ($correction !== null ? $correction : 'null'));
+error_log("Debug - correction key exists: " . (isset($result_data['correction']) ? 'yes' : 'no'));
+error_log("Debug - mc_t: " . ($result_data['mc_t'] ?? 'not set'));
+error_log("Debug - m (nominal): " . ($nominal_value ?? 'not set'));
+
 // Prefer mg value if present; otherwise convert grams to mg for display
 $uncertainty_mg = null;
 if (isset($result_data['u_mc_t_mg']) && is_numeric($result_data['u_mc_t_mg'])) {
@@ -269,7 +291,8 @@ $mpe = $input_data['mpe'] ?? null;
 // Format the values to match the image format
 $nominal_display = is_numeric($nominal_value) ? number_format($nominal_value, 0) . ' g' : '20 g';
 $conventional_display = is_numeric($conventional_mass) ? number_format($conventional_mass, 0) . ' g + ' . number_format(($conventional_mass - floor($conventional_mass)) * 1000, 2) . ' mg' : '0 g + 0.00 mg';
-$uncertainty_display = is_numeric($uncertainty_mg) ? number_format($uncertainty_mg, 2) : '0.00';
+// Display correction (mc_t - m) in mg instead of uncertainty
+$correction_display = is_numeric($correction) ? number_format($correction * 1000, 2) : '0.00';
 $mpe_display = is_numeric($mpe) ? number_format($mpe, 2) : '2.50';
 
 // Column widths - reduced uncertainty and MPE columns to make room for other tables
@@ -280,7 +303,7 @@ $header_texts = [
     'NOMINAL VALUE',
     'IDENTIFICATION',
     'CONVENTIONAL MASS',
-    "UNCERTAINTY\nOF\nMEASUREMENT\n(k=2), mg",
+    "CORRECTION\n(mc_t - m), mg",
     "MAXIMUM\nPERMISSIBLE ERROR\nfor OIML Class\n±δ in mg"
 ];
 
@@ -292,7 +315,6 @@ $maxHeaderHeight = 0;
 // Draw headers using MultiCell for text wrapping
 $currentX = $startX;
 $pdf->SetFont('Arial', 'B', 8); // Larger font size for better readability
-$pdf->SetFillColor(243,243,243);
 
 // Calculate the required height for multi-line headers first
 $maxLines = 4; // Maximum number of lines in any header
@@ -301,8 +323,8 @@ $requiredHeight = $maxLines * $lineHeight;
 
 for ($i = 0; $i < count($header_texts); $i++) {
     $pdf->SetXY($currentX, $startY);
-    // Use MultiCell for all headers to ensure consistent height
-    $pdf->MultiCell($col_w[$i], $lineHeight, $header_texts[$i], 0, 'C', true);
+    // Use MultiCell for all headers to ensure consistent height (no fill)
+    $pdf->MultiCell($col_w[$i], $lineHeight, $header_texts[$i], 0, 'C', false);
     $currentHeaderHeight = $pdf->GetY() - $startY;
     if ($currentHeaderHeight > $maxHeaderHeight) {
         $maxHeaderHeight = $currentHeaderHeight;
@@ -328,18 +350,21 @@ $pdf->SetFont('Arial', '', 9);
 $pdf->Cell($col_w[0], $maxHeaderHeight, $nominal_display, 1, 0, 'C');
 $pdf->Cell($col_w[1], $maxHeaderHeight, $identification, 1, 0, 'C');
 $pdf->Cell($col_w[2], $maxHeaderHeight, $conventional_display, 1, 0, 'C');
-$pdf->Cell($col_w[3], $maxHeaderHeight, $uncertainty_display, 1, 0, 'C');
+$pdf->Cell($col_w[3], $maxHeaderHeight, $correction_display, 1, 0, 'C');
 $pdf->Cell($col_w[4], $maxHeaderHeight, $mpe_display, 1, 1, 'C');
 
 $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(0, 6, 'UNCERTAINTY OF MEASUREMENT:', 0, 1, 'L');
 $pdf->SetFont('Arial', '', 10);
-$pdf->MultiCell(0, 4.5, 'The uncertainty stated is the expanded uncertainty obtained by multiplying the standard uncertainty by the coverage factor k=2, as determined in accordance with the "Guide to the Expression of Uncertainty (GUM)". The value of the measurand lies within the assigned range of values with a probability of 95%.', 0, 'L');
+$uncertainty_text = 'The uncertainty stated is the expanded uncertainty obtained by multiplying the standard uncertainty by the coverage factor k=2, as determined in accordance with the "Guide to the Expression of Uncertainty (GUM)". The value of the measurand lies within the assigned range of values with a probability of 95%.';
+if (is_numeric($uncertainty_mg)) {
+    $uncertainty_text .= ' The expanded uncertainty of measurement is U = ' . number_format($uncertainty_mg, 2) . ' mg.';
+}
+$pdf->MultiCell(0, 4.5, $uncertainty_text, 0, 'L');
 
 $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(0, 6, 'STANDARDS USED AND TRACEABILITY', 0, 1, 'L');
 $pdf->SetFont('Arial', '', 10);
-$pdf->SetFillColor(243,243,243);
 
 // Standards table with proper alignment
 $standards_data = [
@@ -364,12 +389,12 @@ foreach ($standards_data as $index => $row) {
     // Calculate cell height based on max lines
     $cell_height = $max_lines * $line_height;
     
-    // Draw the cells with proper height and left alignment
+    // Draw the cells with proper height and left alignment (no fill)
     $pdf->SetXY($startX, $startY);
-    $pdf->MultiCell($col_widths[0], $line_height, $row[0], 1, 'L', $index == 0, 0);
+    $pdf->MultiCell($col_widths[0], $line_height, $row[0], 1, 'L', false, 0);
     
     $pdf->SetXY($startX + $col_widths[0], $startY);
-    $pdf->MultiCell($col_widths[1], $line_height, $row[1], 1, 'L', $index == 0, 0);
+    $pdf->MultiCell($col_widths[1], $line_height, $row[1], 1, 'L', false, 0);
     
     // Draw additional border lines to ensure complete table structure
     $pdf->SetDrawColor(0, 0, 0);
@@ -386,12 +411,11 @@ $pdf->Ln(12); // Add gap between STANDARDS USED AND TRACEABILITY and EQUIPMENT U
 
 // Equipment table headers - aligned with MEASUREMENT RESULTS table (total 165mm)
 $pdf->SetFont('Arial', 'B', 8); // Reduced font size for headers
-$pdf->SetFillColor(243,243,243);
-$pdf->Cell(40, 8, 'NAME OF STANDARD', 0, 0, 'C', true);
-$pdf->Cell(40, 8, 'MAKE/MODEL', 0, 0, 'C', true);
-$pdf->Cell(25, 8, 'SERIAL NO.', 0, 0, 'C', true);
-$pdf->Cell(35, 8, 'MAXIMUM CAPACITY', 0, 0, 'C', true);
-$pdf->Cell(25, 8, 'READABILITY', 0, 1, 'C', true);
+$pdf->Cell(40, 8, 'NAME OF STANDARD', 0, 0, 'C');
+$pdf->Cell(40, 8, 'MAKE/MODEL', 0, 0, 'C');
+$pdf->Cell(25, 8, 'SERIAL NO.', 0, 0, 'C');
+$pdf->Cell(35, 8, 'MAXIMUM CAPACITY', 0, 0, 'C');
+$pdf->Cell(25, 8, 'READABILITY', 0, 1, 'C');
 
 // Equipment table data - aligned with MEASUREMENT RESULTS table
 $pdf->SetFont('Arial', '', 10);
