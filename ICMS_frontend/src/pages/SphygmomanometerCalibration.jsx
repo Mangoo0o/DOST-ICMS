@@ -169,6 +169,9 @@ function SphygmomanometerCalibration() {
   const [calibrationConfirmMessage, setCalibrationConfirmMessage] = useState("");
   const [calibrationConfirmType, setCalibrationConfirmType] = useState("info");
 
+  // State for simple close confirmation
+  const [showSimpleCloseConfirm, setShowSimpleCloseConfirm] = useState(false);
+
   // Back navigation with confirmation
   const {
     showConfirmation,
@@ -775,6 +778,16 @@ function SphygmomanometerCalibration() {
       <Toaster position="top-right" />
       <div className="w-full mx-auto">
         <div className="bg-white p-8 rounded-lg shadow-md w-full mb-8 border border-blue-100 relative">
+          {/* Close (X) Button */}
+          <button
+            onClick={() => setShowSimpleCloseConfirm(true)}
+            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-lg h-8 w-8 flex items-center justify-center rounded hover:bg-gray-200 transition-colors"
+            title="Close"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+          
           <div className="flex items-center mb-2 pr-20">
             <h1 className="text-2xl font-bold text-black">Sphygmomanometer Calibration</h1>
           </div>
@@ -822,6 +835,22 @@ function SphygmomanometerCalibration() {
         cancelText="Cancel"
         isLoading={isSaving}
       />
+
+      {/* Simple Close Confirmation Modal */}
+      {showSimpleCloseConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Leave Calibration?</h3>
+            <p className="text-gray-600 mb-6">
+              You have unsaved changes in your sphygmomanometer calibration. Are you sure you want to leave? Your progress will be lost.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button onClick={() => setShowSimpleCloseConfirm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">Cancel</button>
+              <button onClick={() => { setShowSimpleCloseConfirm(false); handleConfirmBack(); }} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

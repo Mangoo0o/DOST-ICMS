@@ -1877,7 +1877,13 @@ function getStatusText(status) {
 
 function formatValue(value) {
   if (value === null || value === undefined) return <span className="text-gray-400">N/A</span>;
-  if (typeof value === 'number') return (Math.floor(value * 100) / 100).toFixed(2);
+  if (typeof value === 'number') {
+    // For very small numbers (like calibration corrections), show more precision
+    if (Math.abs(value) < 0.01 && value !== 0) {
+      return value.toFixed(6); // Show 6 decimal places for small values
+    }
+    return (Math.floor(value * 100) / 100).toFixed(2);
+  }
   if (Array.isArray(value)) {
     // Compact table for array of objects
     if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null && !Array.isArray(value[0])) {

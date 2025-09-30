@@ -172,14 +172,20 @@ export const apiService = {
     console.log('API base URL:', api.defaults.baseURL);
     console.log('Full URL:', api.defaults.baseURL + '/api/calibration/save_record.php');
     
-    // Validate required fields
-    const requiredFields = ['sample_id', 'calibration_type', 'input_data', 'calibrated_by'];
+    // Validate required fields (calibrated_by can be null)
+    const requiredFields = ['sample_id', 'calibration_type', 'input_data'];
     const missingFields = requiredFields.filter(field => !recordData[field]);
     
     if (missingFields.length > 0) {
       const error = new Error(`Missing required fields: ${missingFields.join(', ')}`);
       console.error('Validation error:', error.message);
       throw error;
+    }
+    
+    // Validate calibrated_by separately (can be null but should be defined)
+    if (recordData.calibrated_by === undefined) {
+      console.warn('calibrated_by is undefined, setting to null');
+      recordData.calibrated_by = null;
     }
     
     // Ensure date_completed is set if not provided

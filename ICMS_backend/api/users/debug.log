@@ -91789,3 +91789,693 @@ Found 5 users
 Response data: {"records":[{"id":"25","fullname":"123 12","email":"213@gmail.com","userlvl":"calibration_engineers","status":false},{"id":"24","fullname":"kathleen santiago","email":"kathleen@gmail.com","userlvl":"admin","status":false},{"id":"23","fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":"22","fullname":"angelo jaramillia","email":"angelo@gmail.com","userlvl":"calibration_engineers","status":true},{"id":"2","fullname":"Wakin Patongan","email":"wakin@gmail.com","userlvl":"admin","status":true}]}
 Request completed at 2025-09-29 20:44:56
 
+Request started at 2025-09-30 04:23:21
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at DESC
+Raw row data: Array
+(
+    [id] => 25
+    [first_name] => 123
+    [last_name] => 12
+    [email] => 213@gmail.com
+    [role] => calibration_engineers
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 24
+    [first_name] => kathleen
+    [last_name] => santiago
+    [email] => kathleen@gmail.com
+    [role] => admin
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 22
+    [first_name] => angelo
+    [last_name] => jaramillia
+    [email] => angelo@gmail.com
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 2
+    [first_name] => Wakin
+    [last_name] => Patongan
+    [email] => wakin@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 5 users
+Response data: {"records":[{"id":25,"fullname":"123 12","email":"213@gmail.com","userlvl":"calibration_engineers","status":false},{"id":24,"fullname":"kathleen santiago","email":"kathleen@gmail.com","userlvl":"admin","status":false},{"id":23,"fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":22,"fullname":"angelo jaramillia","email":"angelo@gmail.com","userlvl":"calibration_engineers","status":true},{"id":2,"fullname":"Wakin Patongan","email":"wakin@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-09-30 04:23:21
+
+Request started at 2025-09-30 04:23:21
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at DESC
+Raw row data: Array
+(
+    [id] => 25
+    [first_name] => 123
+    [last_name] => 12
+    [email] => 213@gmail.com
+    [role] => calibration_engineers
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 24
+    [first_name] => kathleen
+    [last_name] => santiago
+    [email] => kathleen@gmail.com
+    [role] => admin
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 22
+    [first_name] => angelo
+    [last_name] => jaramillia
+    [email] => angelo@gmail.com
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 2
+    [first_name] => Wakin
+    [last_name] => Patongan
+    [email] => wakin@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 5 users
+Response data: {"records":[{"id":25,"fullname":"123 12","email":"213@gmail.com","userlvl":"calibration_engineers","status":false},{"id":24,"fullname":"kathleen santiago","email":"kathleen@gmail.com","userlvl":"admin","status":false},{"id":23,"fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":22,"fullname":"angelo jaramillia","email":"angelo@gmail.com","userlvl":"calibration_engineers","status":true},{"id":2,"fullname":"Wakin Patongan","email":"wakin@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-09-30 04:23:21
+
+Request started at 2025-09-30 04:23:24
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at DESC
+Raw row data: Array
+(
+    [id] => 25
+    [first_name] => 123
+    [last_name] => 12
+    [email] => 213@gmail.com
+    [role] => calibration_engineers
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 24
+    [first_name] => kathleen
+    [last_name] => santiago
+    [email] => kathleen@gmail.com
+    [role] => admin
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 22
+    [first_name] => angelo
+    [last_name] => jaramillia
+    [email] => angelo@gmail.com
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 2
+    [first_name] => Wakin
+    [last_name] => Patongan
+    [email] => wakin@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 5 users
+Response data: {"records":[{"id":25,"fullname":"123 12","email":"213@gmail.com","userlvl":"calibration_engineers","status":false},{"id":24,"fullname":"kathleen santiago","email":"kathleen@gmail.com","userlvl":"admin","status":false},{"id":23,"fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":22,"fullname":"angelo jaramillia","email":"angelo@gmail.com","userlvl":"calibration_engineers","status":true},{"id":2,"fullname":"Wakin Patongan","email":"wakin@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-09-30 04:23:24
+
+Request started at 2025-09-30 05:18:23
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at DESC
+Raw row data: Array
+(
+    [id] => 25
+    [first_name] => 123
+    [last_name] => 12
+    [email] => 213@gmail.com
+    [role] => calibration_engineers
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 24
+    [first_name] => kathleen
+    [last_name] => santiago
+    [email] => kathleen@gmail.com
+    [role] => admin
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 22
+    [first_name] => angelo
+    [last_name] => jaramillia
+    [email] => angelo@gmail.com
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 2
+    [first_name] => Wakin
+    [last_name] => Patongan
+    [email] => wakin@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 5 users
+Response data: {"records":[{"id":25,"fullname":"123 12","email":"213@gmail.com","userlvl":"calibration_engineers","status":false},{"id":24,"fullname":"kathleen santiago","email":"kathleen@gmail.com","userlvl":"admin","status":false},{"id":23,"fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":22,"fullname":"angelo jaramillia","email":"angelo@gmail.com","userlvl":"calibration_engineers","status":true},{"id":2,"fullname":"Wakin Patongan","email":"wakin@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-09-30 05:18:23
+
+Request started at 2025-09-30 05:18:23
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at DESC
+Raw row data: Array
+(
+    [id] => 25
+    [first_name] => 123
+    [last_name] => 12
+    [email] => 213@gmail.com
+    [role] => calibration_engineers
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 24
+    [first_name] => kathleen
+    [last_name] => santiago
+    [email] => kathleen@gmail.com
+    [role] => admin
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 22
+    [first_name] => angelo
+    [last_name] => jaramillia
+    [email] => angelo@gmail.com
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 2
+    [first_name] => Wakin
+    [last_name] => Patongan
+    [email] => wakin@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 5 users
+Response data: {"records":[{"id":25,"fullname":"123 12","email":"213@gmail.com","userlvl":"calibration_engineers","status":false},{"id":24,"fullname":"kathleen santiago","email":"kathleen@gmail.com","userlvl":"admin","status":false},{"id":23,"fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":22,"fullname":"angelo jaramillia","email":"angelo@gmail.com","userlvl":"calibration_engineers","status":true},{"id":2,"fullname":"Wakin Patongan","email":"wakin@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-09-30 05:18:23
+
+Request started at 2025-09-30 08:13:17
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at DESC
+Raw row data: Array
+(
+    [id] => 25
+    [first_name] => 123
+    [last_name] => 12
+    [email] => 213@gmail.com
+    [role] => calibration_engineers
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 24
+    [first_name] => kathleen
+    [last_name] => santiago
+    [email] => kathleen@gmail.com
+    [role] => admin
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 22
+    [first_name] => angelo
+    [last_name] => jaramillia
+    [email] => angelo@gmail.com
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 2
+    [first_name] => Wakin
+    [last_name] => Patongan
+    [email] => wakin@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 5 users
+Response data: {"records":[{"id":25,"fullname":"123 12","email":"213@gmail.com","userlvl":"calibration_engineers","status":false},{"id":24,"fullname":"kathleen santiago","email":"kathleen@gmail.com","userlvl":"admin","status":false},{"id":23,"fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":22,"fullname":"angelo jaramillia","email":"angelo@gmail.com","userlvl":"calibration_engineers","status":true},{"id":2,"fullname":"Wakin Patongan","email":"wakin@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-09-30 08:13:17
+
+Request started at 2025-09-30 08:13:17
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at DESC
+Raw row data: Array
+(
+    [id] => 25
+    [first_name] => 123
+    [last_name] => 12
+    [email] => 213@gmail.com
+    [role] => calibration_engineers
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 24
+    [first_name] => kathleen
+    [last_name] => santiago
+    [email] => kathleen@gmail.com
+    [role] => admin
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 22
+    [first_name] => angelo
+    [last_name] => jaramillia
+    [email] => angelo@gmail.com
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 2
+    [first_name] => Wakin
+    [last_name] => Patongan
+    [email] => wakin@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 5 users
+Response data: {"records":[{"id":25,"fullname":"123 12","email":"213@gmail.com","userlvl":"calibration_engineers","status":false},{"id":24,"fullname":"kathleen santiago","email":"kathleen@gmail.com","userlvl":"admin","status":false},{"id":23,"fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":22,"fullname":"angelo jaramillia","email":"angelo@gmail.com","userlvl":"calibration_engineers","status":true},{"id":2,"fullname":"Wakin Patongan","email":"wakin@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-09-30 08:13:18
+
+Request started at 2025-09-30 09:01:52
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at DESC
+Raw row data: Array
+(
+    [id] => 25
+    [first_name] => 123
+    [last_name] => 12
+    [email] => 213@gmail.com
+    [role] => calibration_engineers
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 24
+    [first_name] => kathleen
+    [last_name] => santiago
+    [email] => kathleen@gmail.com
+    [role] => admin
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 22
+    [first_name] => angelo
+    [last_name] => jaramillia
+    [email] => angelo@gmail.com
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 2
+    [first_name] => Wakin
+    [last_name] => Patongan
+    [email] => wakin@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 5 users
+Response data: {"records":[{"id":25,"fullname":"123 12","email":"213@gmail.com","userlvl":"calibration_engineers","status":false},{"id":24,"fullname":"kathleen santiago","email":"kathleen@gmail.com","userlvl":"admin","status":false},{"id":23,"fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":22,"fullname":"angelo jaramillia","email":"angelo@gmail.com","userlvl":"calibration_engineers","status":true},{"id":2,"fullname":"Wakin Patongan","email":"wakin@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-09-30 09:01:52
+
+Request started at 2025-09-30 09:01:52
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at DESC
+Raw row data: Array
+(
+    [id] => 25
+    [first_name] => 123
+    [last_name] => 12
+    [email] => 213@gmail.com
+    [role] => calibration_engineers
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 24
+    [first_name] => kathleen
+    [last_name] => santiago
+    [email] => kathleen@gmail.com
+    [role] => admin
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 22
+    [first_name] => angelo
+    [last_name] => jaramillia
+    [email] => angelo@gmail.com
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 2
+    [first_name] => Wakin
+    [last_name] => Patongan
+    [email] => wakin@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 5 users
+Response data: {"records":[{"id":25,"fullname":"123 12","email":"213@gmail.com","userlvl":"calibration_engineers","status":false},{"id":24,"fullname":"kathleen santiago","email":"kathleen@gmail.com","userlvl":"admin","status":false},{"id":23,"fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":22,"fullname":"angelo jaramillia","email":"angelo@gmail.com","userlvl":"calibration_engineers","status":true},{"id":2,"fullname":"Wakin Patongan","email":"wakin@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-09-30 09:01:52
+
+Request started at 2025-09-30 09:03:31
+Raw input: {"first_name":"kathleen","last_name":"dioquino","email":"dioquinokm@slc-sflu.edu.ph","password":"kathleen123","role":"calibration_engineers"}
+Decoded data: stdClass Object
+(
+    [first_name] => kathleen
+    [last_name] => dioquino
+    [email] => dioquinokm@slc-sflu.edu.ph
+    [password] => kathleen123
+    [role] => calibration_engineers
+)
+
+Database connection successful
+All required fields are present
+Attempting to insert user with data:
+First Name: kathleen
+Last Name: dioquino
+Email: dioquinokm@slc-sflu.edu.ph
+Role: calibration_engineers
+User created successfully with ID: 26
+Request completed at 2025-09-30 09:03:31
+
+Request started at 2025-09-30 09:41:04
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at DESC
+Raw row data: Array
+(
+    [id] => 26
+    [first_name] => kathleen
+    [last_name] => dioquino
+    [email] => dioquinokm@slc-sflu.edu.ph
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 25
+    [first_name] => 123
+    [last_name] => 12
+    [email] => 213@gmail.com
+    [role] => calibration_engineers
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 24
+    [first_name] => kathleen
+    [last_name] => santiago
+    [email] => kathleen@gmail.com
+    [role] => admin
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 22
+    [first_name] => angelo
+    [last_name] => jaramillia
+    [email] => angelo@gmail.com
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 2
+    [first_name] => Wakin
+    [last_name] => Patongan
+    [email] => wakin@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 6 users
+Response data: {"records":[{"id":26,"fullname":"kathleen dioquino","email":"dioquinokm@slc-sflu.edu.ph","userlvl":"calibration_engineers","status":true},{"id":25,"fullname":"123 12","email":"213@gmail.com","userlvl":"calibration_engineers","status":false},{"id":24,"fullname":"kathleen santiago","email":"kathleen@gmail.com","userlvl":"admin","status":false},{"id":23,"fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":22,"fullname":"angelo jaramillia","email":"angelo@gmail.com","userlvl":"calibration_engineers","status":true},{"id":2,"fullname":"Wakin Patongan","email":"wakin@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-09-30 09:41:04
+
+Request started at 2025-09-30 09:41:04
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at DESC
+Raw row data: Array
+(
+    [id] => 26
+    [first_name] => kathleen
+    [last_name] => dioquino
+    [email] => dioquinokm@slc-sflu.edu.ph
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 25
+    [first_name] => 123
+    [last_name] => 12
+    [email] => 213@gmail.com
+    [role] => calibration_engineers
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 24
+    [first_name] => kathleen
+    [last_name] => santiago
+    [email] => kathleen@gmail.com
+    [role] => admin
+    [status] => 0
+)
+
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 22
+    [first_name] => angelo
+    [last_name] => jaramillia
+    [email] => angelo@gmail.com
+    [role] => calibration_engineers
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 2
+    [first_name] => Wakin
+    [last_name] => Patongan
+    [email] => wakin@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 6 users
+Response data: {"records":[{"id":26,"fullname":"kathleen dioquino","email":"dioquinokm@slc-sflu.edu.ph","userlvl":"calibration_engineers","status":true},{"id":25,"fullname":"123 12","email":"213@gmail.com","userlvl":"calibration_engineers","status":false},{"id":24,"fullname":"kathleen santiago","email":"kathleen@gmail.com","userlvl":"admin","status":false},{"id":23,"fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":22,"fullname":"angelo jaramillia","email":"angelo@gmail.com","userlvl":"calibration_engineers","status":true},{"id":2,"fullname":"Wakin Patongan","email":"wakin@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-09-30 09:41:04
+

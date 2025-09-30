@@ -417,6 +417,7 @@ function TestWeightsCalibration() {
       currentStep,
     };
     const resultData = {
+      mc_r, // Add mc_r to the saved data
       meanDmci,
       buoyancyCorrection,
       mc_t,
@@ -479,6 +480,7 @@ function TestWeightsCalibration() {
       currentStep,
     };
     const resultData = {
+      mc_r, // Add mc_r to the saved data
       meanDmci,
       buoyancyCorrection,
       mc_t,

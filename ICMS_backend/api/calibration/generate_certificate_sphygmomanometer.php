@@ -493,20 +493,48 @@ $pdf->Cell(0, 5, 'IV. Test for the Rapid Exhaust Valve', 0, 1, 'L');
 $pdf->SetFont('Arial', 'B', 8);
 $pdf->SetX(19); // Align with left margin
 $pdf->Cell(35, 6, 'Applied Pressure (mmHg)', 1, 0, 'C');
-$pdf->Cell(80, 6, 'Time for the Pressure Reduction to reach <= 15 mmHg', 1, 0, 'C');
+$pdf->Cell(60, 6, 'Time for the Pressure Reduction to reach ≤ 15 mmHg', 1, 0, 'C');
+$pdf->Cell(30, 6, 'Result', 1, 0, 'C');
 $pdf->Cell(40, 6, 'Maximum Permissible Error', 1, 1, 'C');
 $pdf->SetFont('Arial', '', 8);
 
 // Get rapid exhaust valve test data (if available)
 $exhaustTime = '';
-if (isset($result_data['rapidExhaust']['elapsedSeconds'])) {
+$exhaustResult = '';
+if (isset($result_data['rapidExhaust']['elapsedSeconds']) && !empty($result_data['rapidExhaust']['elapsedSeconds'])) {
     $exhaustTime = $result_data['rapidExhaust']['elapsedSeconds'] . ' seconds';
-} elseif (isset($input_data['rapidElapsedSeconds'])) {
+    $exhaustResult = $result_data['rapidExhaust']['result'] ?? '';
+} elseif (isset($input_data['rapidElapsedSeconds']) && !empty($input_data['rapidElapsedSeconds'])) {
     $exhaustTime = $input_data['rapidElapsedSeconds'] . ' seconds';
+    // Calculate result based on time (PASS if < 10 seconds, FAIL if >= 10 seconds)
+    $timeValue = floatval($input_data['rapidElapsedSeconds']);
+    $exhaustResult = $timeValue < 10 ? 'PASS' : 'FAIL';
+} elseif (isset($result_data['rapidExhaust']['elapsed']) && !empty($result_data['rapidExhaust']['elapsed'])) {
+    $exhaustTime = $result_data['rapidExhaust']['elapsed'] . ' seconds';
+    $exhaustResult = $result_data['rapidExhaust']['result'] ?? '';
+} else {
+    // Try alternative field names
+    if (isset($result_data['rapidExhaustTime']) && !empty($result_data['rapidExhaustTime'])) {
+        $exhaustTime = $result_data['rapidExhaustTime'] . ' seconds';
+        $timeValue = floatval($result_data['rapidExhaustTime']);
+        $exhaustResult = $timeValue < 10 ? 'PASS' : 'FAIL';
+    } elseif (isset($input_data['rapidExhaustTime']) && !empty($input_data['rapidExhaustTime'])) {
+        $exhaustTime = $input_data['rapidExhaustTime'] . ' seconds';
+        $timeValue = floatval($input_data['rapidExhaustTime']);
+        $exhaustResult = $timeValue < 10 ? 'PASS' : 'FAIL';
+    }
 }
 
+// Debug: Log rapid exhaust data for troubleshooting
+error_log("Sphygmomanometer Rapid Exhaust Debug:");
+error_log("result_data['rapidExhaust']: " . print_r($result_data['rapidExhaust'] ?? 'not set', true));
+error_log("input_data['rapidElapsedSeconds']: " . ($input_data['rapidElapsedSeconds'] ?? 'not set'));
+error_log("Final exhaustTime: " . $exhaustTime);
+error_log("Final exhaustResult: " . $exhaustResult);
+
 $pdf->Cell(35, 6, '300', 1, 0, 'C');
-$pdf->Cell(80, 6, $exhaustTime, 1, 0, 'C');
+$pdf->Cell(60, 6, $exhaustTime, 1, 0, 'C');
+$pdf->Cell(30, 6, $exhaustResult, 1, 0, 'C');
 $pdf->Cell(40, 6, '< 10 seconds', 1, 1, 'C');
 
 $pdf->Ln(5);

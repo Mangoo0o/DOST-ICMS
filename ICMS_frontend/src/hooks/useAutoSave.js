@@ -37,6 +37,7 @@ export const useAutoSave = (saveFunction, data, options = {}) => {
         timestamp: Date.now()
       };
       localStorage.setItem(`backup_${saveKey}`, JSON.stringify(backupData));
+      console.log('Created backup with key:', `backup_${saveKey}`, 'Data:', backupData);
     } catch (error) {
       console.error('Failed to create backup:', error);
     }
@@ -144,20 +145,30 @@ export const usePageRefreshDetection = (restoreFunction, saveKey, enabled = true
     };
 
     const handlePageLoad = () => {
+      console.log('usePageRefreshDetection - handlePageLoad called');
+      console.log('Looking for backup with key:', `backup_${saveKey}`);
+      
       try {
         const backupData = localStorage.getItem(`backup_${saveKey}`);
+        console.log('Backup data found:', backupData);
+        
         if (backupData) {
           const parsed = JSON.parse(backupData);
           const timeDiff = Date.now() - parsed.timestamp;
+          console.log('Backup age:', timeDiff, 'ms');
           
           // Only restore if backup is less than 1 hour old
           if (timeDiff < 3600000) {
+            console.log('Restoring data from backup:', parsed.data);
             restoreFunction(parsed.data);
             toast.success('Data restored from backup');
           } else {
+            console.log('Backup too old, clearing it');
             // Clear old backup
             localStorage.removeItem(`backup_${saveKey}`);
           }
+        } else {
+          console.log('No backup data found');
         }
       } catch (error) {
         console.error('Failed to restore data:', error);

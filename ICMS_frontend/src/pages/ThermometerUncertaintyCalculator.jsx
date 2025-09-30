@@ -931,6 +931,7 @@ function ThermometerUncertaintyCalculator() {
   // Auto-save function - saves progress without marking as completed
   const handleAutoSave = async () => {
     if (!sampleId) {
+      console.log('Auto-save skipped: No sample ID');
       return false;
     }
     
@@ -947,18 +948,25 @@ function ThermometerUncertaintyCalculator() {
         calibration_type: 'Thermometer',
         input_data: inputData,
         result_data: resultData,
-        calibrated_by: user?.id || null,
+        calibrated_by: user?.id || user?.client_id || user?.user_id || null,
         date_started: new Date().toISOString(),
         date_completed: null // Don't mark as completed for auto-save
       });
       
       if (response && response.data) {
-        console.log('Auto-save successful');
+        console.log('Auto-save successful:', response.data);
         return true;
+      } else {
+        console.error('Auto-save failed: Invalid response', response);
+        return false;
       }
-      return false;
     } catch (e) {
       console.error('Auto-save failed:', e);
+      console.error('Auto-save error details:', {
+        message: e.message,
+        response: e.response?.data,
+        status: e.response?.status
+      });
       return false;
     }
   };
@@ -989,10 +997,20 @@ function ThermometerUncertaintyCalculator() {
       return false;
     }
     
-    const calibratedBy = user?.id || null;
+    // Check for different possible user ID fields
+    const calibratedBy = user?.id || user?.client_id || user?.user_id || null;
+    console.log('User object:', user);
+    console.log('Available user fields:', Object.keys(user || {}));
+    console.log('Calibrated by value:', calibratedBy);
+    
     if (!calibratedBy) {
-      console.error('No valid user ID found:', { user_id: user?.id });
-      toast.error('Invalid user data.');
+      console.error('No valid user ID found:', { 
+        user_id: user?.id, 
+        client_id: user?.client_id, 
+        user_user_id: user?.user_id,
+        all_user_keys: Object.keys(user || {})
+      });
+      toast.error('Invalid user data. Please log in again.');
       return false;
     }
     
@@ -1047,6 +1065,18 @@ function ThermometerUncertaintyCalculator() {
       console.log('User data:', user);
       console.log('User ID for calibration:', calibratedBy);
       
+      // Debug the data being sent
+      const calibrationData = {
+        sample_id: sampleId,
+        calibration_type: 'Thermometer',
+        input_data: inputData,
+        result_data: resultData,
+        calibrated_by: calibratedBy,
+        date_started: new Date().toISOString(),
+        date_completed: new Date().toISOString()
+      };
+      console.log('Complete calibration data being sent:', calibrationData);
+      
       const response = await apiService.saveCalibrationRecord({
         sample_id: sampleId,
         calibration_type: 'Thermometer',
@@ -1079,9 +1109,27 @@ function ThermometerUncertaintyCalculator() {
       console.error('Error details:', {
         message: e.message,
         response: e.response?.data,
-        status: e.response?.status
+        status: e.response?.status,
+        statusText: e.response?.statusText,
+        headers: e.response?.headers
       });
-      toast.error('Failed to save calibration record: ' + (e.message || 'Unknown error'));
+      
+      // Check if it's an authentication error
+      if (e.response?.status === 401) {
+        console.error('Authentication failed - token may be invalid or expired');
+        toast.error('Authentication failed. Please log in again.');
+        // Optionally redirect to login
+        // window.location.href = '/login';
+      } else if (e.response?.status === 400) {
+        console.error('Bad request - validation error');
+        toast.error('Invalid calibration data: ' + (e.response?.data?.message || e.message));
+      } else if (e.response?.status === 500) {
+        console.error('Server error');
+        toast.error('Server error. Please try again later.');
+      } else {
+        toast.error('Failed to save calibration record: ' + (e.message || 'Unknown error'));
+      }
+      
       return false; // Return false instead of throwing
     }
   };
@@ -1178,7 +1226,20 @@ function ThermometerUncertaintyCalculator() {
                       ));
     setHasUnsavedChanges(hasChanges);
     setUnsavedChanges(hasChanges);
-  }, [us, sc1, df1, rg, rd, repeatability, setUnsavedChanges]);
+    
+    // Save current form data to sessionStorage for page refresh restoration
+    if (hasChanges) {
+      try {
+        const currentFormData = {
+          us, sc1, df1, rg, rd, repeatability, referenceData, envConditions, currentStep
+        };
+        sessionStorage.setItem('current_form_data', JSON.stringify(currentFormData));
+        console.log('Saved form data to sessionStorage:', currentFormData);
+      } catch (error) {
+        console.error('Failed to save form data to sessionStorage:', error);
+      }
+    }
+  }, [us, sc1, df1, rg, rd, repeatability, referenceData, envConditions, currentStep, setUnsavedChanges]);
 
   // Auto-save functionality
   const saveKey = `thermometer_calibration_${sampleId || 'new'}`;
@@ -1196,18 +1257,60 @@ function ThermometerUncertaintyCalculator() {
 
   // Page refresh detection and data restoration
   const restoreData = useCallback((restoredData) => {
-    if (restoredData.us !== undefined) setUs(restoredData.us);
-    if (restoredData.sc1 !== undefined) setSc1(restoredData.sc1);
-    if (restoredData.df1 !== undefined) setDf1(restoredData.df1);
-    if (restoredData.rg !== undefined) setRg(restoredData.rg);
-    if (restoredData.rd !== undefined) setRd(restoredData.rd);
-    if (restoredData.repeatability) setRepeatability(restoredData.repeatability);
-    if (restoredData.referenceData) setReferenceData(restoredData.referenceData);
-    if (restoredData.envConditions) setEnvConditions(restoredData.envConditions);
-    if (restoredData.currentStep) setCurrentStep(restoredData.currentStep);
+    console.log('ThermometerUncertaintyCalculator - restoreData called with:', restoredData);
+    
+    if (restoredData.us !== undefined) {
+      console.log('Restoring us:', restoredData.us);
+      setUs(restoredData.us);
+    }
+    if (restoredData.sc1 !== undefined) {
+      console.log('Restoring sc1:', restoredData.sc1);
+      setSc1(restoredData.sc1);
+    }
+    if (restoredData.df1 !== undefined) {
+      console.log('Restoring df1:', restoredData.df1);
+      setDf1(restoredData.df1);
+    }
+    if (restoredData.rg !== undefined) {
+      console.log('Restoring rg:', restoredData.rg);
+      setRg(restoredData.rg);
+    }
+    if (restoredData.rd !== undefined) {
+      console.log('Restoring rd:', restoredData.rd);
+      setRd(restoredData.rd);
+    }
+    if (restoredData.repeatability) {
+      console.log('Restoring repeatability:', restoredData.repeatability);
+      setRepeatability(restoredData.repeatability);
+    }
+    if (restoredData.referenceData) {
+      console.log('Restoring referenceData:', restoredData.referenceData);
+      setReferenceData(restoredData.referenceData);
+    }
+    if (restoredData.envConditions) {
+      console.log('Restoring envConditions:', restoredData.envConditions);
+      setEnvConditions(restoredData.envConditions);
+    }
+    if (restoredData.currentStep) {
+      console.log('Restoring currentStep:', restoredData.currentStep);
+      setCurrentStep(restoredData.currentStep);
+    }
+    
+    console.log('Data restoration completed');
   }, []);
 
   usePageRefreshDetection(restoreData, saveKey, true);
+
+  // Trigger auto-save when there are changes
+  useEffect(() => {
+    if (hasUnsavedChanges && sampleId) {
+      // Small delay to ensure state is updated
+      const timer = setTimeout(() => {
+        handleAutoSave().catch(console.error);
+      }, 2000); // 2 seconds delay to avoid too frequent saves
+      return () => clearTimeout(timer);
+    }
+  }, [hasUnsavedChanges, sampleId]);
 
   // Back navigation with confirmation
   const {
@@ -1229,6 +1332,7 @@ function ThermometerUncertaintyCalculator() {
 
 
 
+
   // Start calibration when component mounts
   useEffect(() => {
     startCalibration('thermometer');
@@ -1239,10 +1343,20 @@ function ThermometerUncertaintyCalculator() {
 
   // Auto-populate from existing calibration record if available
   useEffect(() => {
+    console.log('ThermometerUncertaintyCalculator - Data loading useEffect triggered');
+    console.log('Sample ID:', sampleId);
+    
     if (sampleId) {
+      console.log('Fetching calibration record for sample ID:', sampleId);
       apiService.getCalibrationRecordBySampleId(sampleId).then(res => {
+        console.log('Calibration record response:', res);
+        
         if (res.data && res.data.input_data && res.data.calibration_type === 'Thermometer') {
+          console.log('Found thermometer calibration data, parsing...');
           const input = typeof res.data.input_data === 'string' ? JSON.parse(res.data.input_data) : res.data.input_data;
+          console.log('Parsed input data:', input);
+          
+          // Load saved calibration data with fallbacks
           setUs(input.us ?? DEFAULT_US);
           setSc1(input.sc1 ?? DEFAULT_SC1);
           setDf1(input.df1 ?? DEFAULT_DF1);
@@ -1265,8 +1379,14 @@ function ThermometerUncertaintyCalculator() {
             avgHumidity: 54.0
           });
           setCurrentStep(input.currentStep || 1);
+          
+          console.log('Successfully loaded existing thermometer calibration data');
+        } else {
+          console.log('No thermometer calibration data found or invalid data structure');
+          console.log('Response data:', res.data);
         }
-      }).catch(() => {
+      }).catch(err => {
+        console.error('Error loading calibration record:', err);
         // No record found, do nothing
       });
     }
