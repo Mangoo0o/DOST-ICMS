@@ -80,7 +80,7 @@ try {
 	$plain_password = bin2hex(random_bytes(6)); // 12 hex chars
 	$password_hash = password_hash($plain_password, PASSWORD_BCRYPT);
 
-	$stmt = $pdo->prepare('INSERT INTO clients (first_name, last_name, age, gender, province, city, barangay, contact_number, email, company, industry_type, service_line, company_head, password, is_pwd, is_4ps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+	$stmt = $pdo->prepare('INSERT INTO clients (first_name, last_name, age, gender, province, city, barangay, contact_number, email, company, industry_type, service_line, company_head, password, is_pwd, is_4ps, require_password_change) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 	$stmt->execute([
 		$data['first_name'],
 		$data['last_name'],
@@ -97,7 +97,8 @@ try {
 		$data['company_head'],
 		$password_hash,
 		$data['is_pwd'],
-		$data['is_4ps']
+		$data['is_4ps'],
+		1
 	]);
 
 	$client_id = $pdo->lastInsertId();

@@ -11,6 +11,7 @@ import mpeReference from '../data/mpe_reference.json';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { useBackNavigation } from '../hooks/useBackNavigation';
 import { useAutoSave, usePageRefreshDetection } from '../hooks/useAutoSave';
+import { dispatchCalibrationCompletionNotification } from '../utils/calibrationNotifications';
 
 // Custom hook for input navigation
 const useInputNavigation = () => {
@@ -148,10 +149,16 @@ const CardSection = ({ children, className = '' }) => (
   </div>
 );
 
-const modernInput = (props) => {
+const ModernInput = (props) => {
   const { handleKeyDown: navigationHandler } = useInputNavigation();
 
   const handleKeyDown = (e) => {
+    // Prevent E, e, +, - characters in number inputs to avoid scientific notation
+    if (props.type === 'number' && ['e', 'E', '+', '-'].includes(e.key)) {
+      e.preventDefault();
+      return;
+    }
+    
     navigationHandler(e, props.onKeyDown);
   };
 
@@ -186,7 +193,7 @@ function TestWeightsCalibration() {
   // Extract equipment ID from navigation state
   const passedEquipmentId = location.state?.equipmentId || null;
   const passedSerialNumber = location.state?.serialNumber || '';
-  const passedSampleId = location.state?.sampleId || null; // sampleId is actually sampleId from navigation
+  // const passedSampleId = location.state?.sampleId || null; // sampleId is actually sampleId from navigation
   const [currentStep, setCurrentStep] = useState(1);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showSimpleCloseConfirm, setShowSimpleCloseConfirm] = useState(false);
@@ -194,8 +201,8 @@ function TestWeightsCalibration() {
   // Next-step confirmation state
   const [showNextConfirm, setShowNextConfirm] = useState(false);
   const [isNextSaving, setIsNextSaving] = useState(false);
-  const [nextConfirmTitle, setNextConfirmTitle] = useState('Proceed to next step?');
-  const [nextConfirmMessage, setNextConfirmMessage] = useState('Your progress will be saved before moving to the next step.');
+  // const [nextConfirmTitle, setNextConfirmTitle] = useState('Proceed to next step?');
+  // const [nextConfirmMessage, setNextConfirmMessage] = useState('Your progress will be saved before moving to the next step.');
 
   // Step 1: Preparation
   const [preparation, setPreparation] = useState({
@@ -213,6 +220,7 @@ function TestWeightsCalibration() {
     airDensity: '',
   });
   const [sampleId, setSampleId] = useState(passedEquipmentId);
+  const [sampleData, setSampleData] = useState(null);
 
   // Add state for selected reference entry
   const [selectedReference, setSelectedReference] = useState(null);
@@ -224,25 +232,35 @@ function TestWeightsCalibration() {
     if (passedEquipmentId) {
       apiService.getSampleById(passedEquipmentId).then(res => {
         const eq = res.data;
+        console.log('Equipment data loaded:', eq);
+        console.log('Setting testWeightNominal to:', eq.capacity);
+        console.log('Setting testWeightClass to:', eq.class);
         setPreparation(prep => ({
           ...prep,
           testWeight: eq.serial_no || '',
-          testWeightNominal: eq.capacity || '',
-          testWeightClass: eq.class || '',
+          // Only set these if they're not already populated and equipment data has values
+          testWeightNominal: prep.testWeightNominal || eq.capacity || '',
+          testWeightClass: prep.testWeightClass || eq.class || '',
         }));
         setSampleId(eq.id || null);
+        setSampleData(eq); // Store sample data for reference number access
         setSampleDataLoaded(true);
       });
     } else if (passedSerialNumber) {
       apiService.getSampleBySerial(passedSerialNumber).then(res => {
         const eq = res.data;
+        console.log('Equipment data loaded by serial:', eq);
+        console.log('Setting testWeightNominal to:', eq.capacity);
+        console.log('Setting testWeightClass to:', eq.class);
         setPreparation(prep => ({
           ...prep,
           testWeight: eq.serial_no || '',
-          testWeightNominal: eq.capacity || '',
-          testWeightClass: eq.class || '',
+          // Only set these if they're not already populated and equipment data has values
+          testWeightNominal: prep.testWeightNominal || eq.capacity || '',
+          testWeightClass: prep.testWeightClass || eq.class || '',
         }));
         setSampleId(eq.id || null);
+        setSampleData(eq); // Store sample data for reference number access
         setSampleDataLoaded(true);
       });
     } else {
@@ -392,8 +410,10 @@ function TestWeightsCalibration() {
     }
   }, [currentStep, mpe, preparation.testWeightNomval]);
 
+  // Removed clearAllData function - always start fresh automatically
+
   // Auto-save function - saves progress without marking as completed
-  const handleAutoSave = async () => {
+  const handleAutoSave = useCallback(async () => {
     console.log('handleAutoSave called with sampleId:', sampleId);
     if (!sampleId) {
       console.log('No sampleId, auto-save cancelled');
@@ -401,6 +421,9 @@ function TestWeightsCalibration() {
     }
     
     console.log('Auto-saving test weights calibration progress...');
+    console.log('Preparation data being saved:', preparation);
+    console.log('Test Weight Class:', preparation.testWeightClass);
+    console.log('Test Weight Nominal:', preparation.testWeightNominal);
     
     const inputData = {
       preparation,
@@ -451,7 +474,52 @@ function TestWeightsCalibration() {
       console.error('Auto-save failed:', e);
       return false;
     }
+  }, [sampleId, preparation, abbaRows, mpe, currentStep, user?.id, u_mc_r, u_meanDmci, u_b, u_ba, k, mc_r, meanDmci, buoyancyCorrection, mc_t, u_mc_t, U_mc_t, correction, passesMPE]);
+
+  // Track if equipment data has been loaded
+  const [sampleDataLoaded, setSampleDataLoaded] = useState(false);
+
+  // Auto-save hook integration
+  const autoSaveData = {
+    preparation,
+    abbaRows,
+    mpe,
+    currentStep,
+    sampleId,
+    selectedReference
   };
+
+  const { manualSave, clearBackup } = useAutoSave(
+    handleAutoSave,
+    autoSaveData,
+    {
+      interval: 30000, // 30 seconds
+      enabled: hasUnsavedChanges && sampleId && sampleDataLoaded,
+      showToast: false, // Don't show toast for auto-save to avoid spam
+      saveKey: 'test_weights_calibration'
+    }
+  );
+
+  // Page refresh detection and data restoration
+  const restoreData = useCallback((data) => {
+    if (data.preparation) {
+      setPreparation(data.preparation);
+    }
+    if (data.abbaRows) {
+      setAbbaRows(data.abbaRows);
+    }
+    if (data.mpe) {
+      setMpe(data.mpe);
+    }
+    if (data.currentStep) {
+      setCurrentStep(data.currentStep);
+    }
+    if (data.selectedReference) {
+      setSelectedReference(data.selectedReference);
+    }
+  }, []);
+
+  usePageRefreshDetection(restoreData, 'test_weights_calibration', true);
 
   // Final save function - marks calibration as completed
   const handleSaveCalibration = async () => {
@@ -511,8 +579,10 @@ function TestWeightsCalibration() {
       console.log('TestWeightsCalibration - Save successful:', response);
       setHasUnsavedChanges(false);
       
-      // Trigger notification update for clients
-      window.dispatchEvent(new CustomEvent('calibration-completed'));
+      // Trigger smart notification update for clients (only if multiple samples)
+      if (sampleData?.reservation_ref_no) {
+        await dispatchCalibrationCompletionNotification(sampleData.reservation_ref_no, sampleId, 'Test Weights');
+      }
       
       return response;
     } catch (error) {
@@ -532,82 +602,44 @@ function TestWeightsCalibration() {
       mpe && mpe.toString().trim() !== '';
     
     setHasUnsavedChanges(hasChanges);
-    
-    // Save current form data to sessionStorage for page refresh restoration
-    if (hasChanges) {
-      try {
-        const currentFormData = {
-          preparation,
-          abbaRows,
-          mpe,
-          currentStep
-        };
-        sessionStorage.setItem('current_form_data', JSON.stringify(currentFormData));
-      } catch (error) {
-        console.error('Failed to save form data to sessionStorage:', error);
-      }
-    }
-  }, [preparation, abbaRows, mpe, currentStep]);
+  }, [preparation, abbaRows, mpe]);
 
-  // Track if equipment data has been loaded
-  const [sampleDataLoaded, setSampleDataLoaded] = useState(false);
-
-  // Auto-save functionality
-  const saveKey = `test_weights_calibration_${sampleId || 'new'}`;
-  
-  const { manualSave, clearBackup } = useAutoSave(
-    handleAutoSave,
-    { preparation, abbaRows, mpe, currentStep },
-    {
-      interval: 10000, // 10 seconds - more frequent saves
-      enabled: hasUnsavedChanges && sampleDataLoaded,
-      showToast: false,
-      saveKey
-    }
-  );
-
-  // Page refresh detection and data restoration
-  const restoreData = useCallback((restoredData) => {
-    if (restoredData.preparation) {
-      setPreparation(restoredData.preparation);
-    }
-    if (restoredData.abbaRows) {
-      setAbbaRows(restoredData.abbaRows);
-    }
-    if (restoredData.mpe) {
-      setMpe(restoredData.mpe);
-    }
-    if (restoredData.currentStep) {
-      setCurrentStep(restoredData.currentStep);
-    }
-  }, []);
-
-  usePageRefreshDetection(restoreData, saveKey, sampleDataLoaded);
-
-  // Auto-populate from existing calibration record if available
+  // Load existing calibration data from database
   useEffect(() => {
     if (sampleId) {
+      console.log('Checking for existing calibration data for sample:', sampleId);
+      
       apiService.getCalibrationRecordBySampleId(sampleId).then(res => {
-        console.log('Test Weights Calibration record response:', res.data);
-        if (res.data && res.data.has_calibration === false) {
-          // No calibration record exists for this sample - this is normal for new calibrations
-          console.log('No calibration record found for this sample');
-        } else if (res.data && res.data.input_data && res.data.calibration_type === 'Test Weights') {
+        console.log('Calibration record check response:', res.data);
+        
+        if (res.data && res.data.input_data && res.data.calibration_type === 'Test Weights') {
+          // Existing calibration record found - load from database
+          console.log('Existing calibration record found - loading from database');
           const input = typeof res.data.input_data === 'string' ? JSON.parse(res.data.input_data) : res.data.input_data;
-          console.log('Loaded test weights data:', input);
-          setPreparation(input.preparation || {
-            testWeight: '',
-            testWeightClass: '',
-            testWeightNominal: '',
-            referenceWeight: '',
-            referenceWeightClass: '',
-            referenceWeightNominal: '',
-            referenceWeightDensity: '',
-            testWeightDensity: '',
-            temp: '',
-            humidity: '',
-            pressure: '',
-            airDensity: '',
+          console.log('Loaded test weights data from database:', input);
+          
+          console.log('Setting preparation from database:', input.preparation);
+          setPreparation(prevPrep => {
+            const dbPrep = input.preparation || {
+              testWeight: '',
+              testWeightClass: '',
+              testWeightNominal: '',
+              referenceWeight: '',
+              referenceWeightClass: '',
+              referenceWeightNominal: '',
+              referenceWeightDensity: '',
+              testWeightDensity: '',
+              temp: '',
+              humidity: '',
+              pressure: '',
+              airDensity: '',
+            };
+            
+            // Merge database data with current preparation, prioritizing database data
+            return {
+              ...prevPrep,
+              ...dbPrep,
+            };
           });
           setAbbaRows(input.abbaRows || [
             { S1: '', T1: '', T2: '', S2: '', Dmci: '' },
@@ -616,32 +648,20 @@ function TestWeightsCalibration() {
           ]);
           setMpe(input.mpe || '');
           setCurrentStep(input.currentStep || 1);
+          
+          console.log('Loaded existing calibration data from database');
         }
-      }).catch((err) => {
-        // Log unexpected errors
-        console.log('Error loading calibration record:', err);
+      }).catch(err => {
+        console.log('Error checking calibration record:', err);
       });
     }
   }, [sampleId]);
-
-  // Trigger auto-save when equipment data is loaded and there are changes
-  useEffect(() => {
-    console.log('Auto-save trigger check:', { sampleDataLoaded, hasUnsavedChanges, sampleId });
-    if (sampleDataLoaded && hasUnsavedChanges) {
-      console.log('Triggering auto-save...');
-      // Small delay to ensure state is updated
-      const timer = setTimeout(() => {
-        handleAutoSave().catch(console.error);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [sampleDataLoaded, hasUnsavedChanges]);
 
   // Back navigation with confirmation
   const {
     showConfirmation,
     isSaving,
-    handleBackClick,
+    // handleBackClick,
     handleConfirmBack,
     handleCancelBack,
     confirmationTitle,
@@ -652,7 +672,7 @@ function TestWeightsCalibration() {
     confirmationTitle: "Leave Calibration?",
     confirmationMessage: "You have unsaved changes in your test weights calibration. Are you sure you want to leave? Your progress will be lost.",
     confirmationType: "warning",
-    onSave: handleAutoSave
+    onSave: manualSave
   });
 
   // Confirm Calibration handler
@@ -661,16 +681,20 @@ function TestWeightsCalibration() {
       console.error('No sampleId provided for test weights calibration confirmation');
       return;
     }
+    
+    setIsCalibrationLoading(true);
     try {
       console.log('Calling updateSampleStatus with sampleId:', sampleId, 'status: completed');
       const response = await apiService.updateSampleStatus(sampleId, 'completed');
       console.log('updateSampleStatus response:', response);
       
-      clearBackup(); // Clear the auto-save backup when calibration is completed
+      // Removed clearBackup - no auto-save backup to clear
       toast.success('Equipment status set to completed. Request will be automatically completed when all samples are finished.');
       
-      // Trigger notification update for clients
-      window.dispatchEvent(new CustomEvent('calibration-completed'));
+      // Trigger smart notification update for clients (only if multiple samples)
+      if (sampleData?.reservation_ref_no) {
+        await dispatchCalibrationCompletionNotification(sampleData.reservation_ref_no, sampleId, 'Test Weights');
+      }
       
       // Navigate back to calibration page after successful confirmation
       setTimeout(() => {
@@ -680,6 +704,8 @@ function TestWeightsCalibration() {
       console.error('Failed to update sample status:', e);
       toast.error('Failed to update sample status: ' + (e.message || 'Unknown error'));
       throw e; // Re-throw to be caught by the calling function
+    } finally {
+      setIsCalibrationLoading(false);
     }
   };
 
@@ -705,6 +731,9 @@ function TestWeightsCalibration() {
       
       // Clear unsaved changes to prevent back navigation confirmation
       setHasUnsavedChanges(false);
+      
+      // Clear auto-save backup since calibration is completed
+      clearBackup();
       
       // Show success message
       toast.success('Calibration completed successfully!');
@@ -785,7 +814,7 @@ function TestWeightsCalibration() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Test Weight Serial:</label>
-                    {modernInput({
+                    {ModernInput({
                       name: 'testWeight',
                       value: preparation.testWeight,
                       readOnly: true,
@@ -794,7 +823,7 @@ function TestWeightsCalibration() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Test Weight Nominal (g):</label>
-                    {modernInput({
+                    {ModernInput({
                       name: 'testWeightNominal',
                       value: preparation.testWeightNominal,
                       onChange: handlePreparationChange,
@@ -803,7 +832,7 @@ function TestWeightsCalibration() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Test Weight Class:</label>
-                    {modernInput({
+                    {ModernInput({
                       name: 'testWeightClass',
                       value: preparation.testWeightClass,
                       onChange: handlePreparationChange,
@@ -839,7 +868,7 @@ function TestWeightsCalibration() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Reference Weight Class:</label>
-                    {modernInput({
+                    {ModernInput({
                       name: 'referenceWeightClass',
                       value: preparation.referenceWeightClass,
                       onChange: handlePreparationChange,
@@ -848,7 +877,7 @@ function TestWeightsCalibration() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Reference Weight Nominal (g):</label>
-                    {modernInput({
+                    {ModernInput({
                       name: 'referenceWeightNominal',
                       value: preparation.referenceWeightNominal,
                       onChange: handlePreparationChange,
@@ -875,7 +904,7 @@ function TestWeightsCalibration() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Temperature (°C):</label>
-                    {modernInput({
+                    {ModernInput({
                       name: 'temp',
                       value: preparation.temp,
                       onChange: handlePreparationChange,
@@ -884,7 +913,7 @@ function TestWeightsCalibration() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Humidity (%):</label>
-                    {modernInput({
+                    {ModernInput({
                       name: 'humidity',
                       value: preparation.humidity,
                       onChange: handlePreparationChange,
@@ -918,10 +947,10 @@ function TestWeightsCalibration() {
                 <tbody>
                   {abbaRows.map((row, idx) => (
                     <tr key={idx}>
-                      <td className="border px-2 py-1">{modernInput({ value: row.S1, onChange: e => handleAbbaChange(idx, 'S1', e.target.value), type: 'number', className: 'w-24' })}</td>
-                      <td className="border px-2 py-1">{modernInput({ value: row.T1, onChange: e => handleAbbaChange(idx, 'T1', e.target.value), type: 'number', className: 'w-24' })}</td>
-                      <td className="border px-2 py-1">{modernInput({ value: row.T2, onChange: e => handleAbbaChange(idx, 'T2', e.target.value), type: 'number', className: 'w-24' })}</td>
-                      <td className="border px-2 py-1">{modernInput({ value: row.S2, onChange: e => handleAbbaChange(idx, 'S2', e.target.value), type: 'number', className: 'w-24' })}</td>
+                      <td className="border px-2 py-1">{ModernInput({ value: row.S1, onChange: e => handleAbbaChange(idx, 'S1', e.target.value), type: 'number', className: 'w-24' })}</td>
+                      <td className="border px-2 py-1">{ModernInput({ value: row.T1, onChange: e => handleAbbaChange(idx, 'T1', e.target.value), type: 'number', className: 'w-24' })}</td>
+                      <td className="border px-2 py-1">{ModernInput({ value: row.T2, onChange: e => handleAbbaChange(idx, 'T2', e.target.value), type: 'number', className: 'w-24' })}</td>
+                      <td className="border px-2 py-1">{ModernInput({ value: row.S2, onChange: e => handleAbbaChange(idx, 'S2', e.target.value), type: 'number', className: 'w-24' })}</td>
                       <td className="border px-2 py-1 font-mono">{row.Dmci !== '' ? Number(row.Dmci).toFixed(4) : ''}</td>
                       <td className="border px-2 py-1">{abbaRows.length > 3 && (
                         <button className="text-red-500 hover:underline text-xs" onClick={() => removeAbbaRow(idx)}>Remove</button>
@@ -963,7 +992,7 @@ function TestWeightsCalibration() {
                   <tr><td className="border px-2 py-1">UNCERTAINTY OF MEASUREMENT (k=2), mg</td><td className="border px-2 py-1 font-mono">{(U_mc_t * 1000).toFixed(2)} mg</td></tr>
                   <tr className="bg-gray-100"><th colSpan="2" className="text-left px-2 py-1">MPE Check</th></tr>
                   <tr><td className="border px-2 py-1">Correction (mc_t - m)</td><td className="border px-2 py-1 font-mono">{correction.toFixed(6)} g</td></tr>
-                  <tr><td className="border px-2 py-1">MPE (from OIML table)</td><td className="border px-2 py-1">{modernInput({ value: mpe, onChange: e => setMpe(e.target.value), type: 'number' })}</td></tr>
+                  <tr><td className="border px-2 py-1">MPE (from OIML table)</td><td className="border px-2 py-1">{ModernInput({ value: mpe, onChange: e => setMpe(e.target.value), type: 'number' })}</td></tr>
                   <tr><td className="border px-2 py-1">MPE Result</td><td className={`border px-2 py-1 font-bold ${!passesMPE ? 'bg-red-50' : 'bg-green-50'}`}><span className={passesMPE ? 'text-green-600' : 'text-red-500'}>{passesMPE ? '✓ PASS' : '✗ FAIL'}</span></td></tr>
                 </tbody>
               </table>
@@ -979,13 +1008,42 @@ function TestWeightsCalibration() {
 
   return (
     <div className="bg-gray-100 min-h-screen p-4">
+      {/* Loading Screen Overlay for Calibration Completion */}
+      {isCalibrationLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100]">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 text-center">
+            <div className="mb-6">
+              <svg className="animate-spin h-16 w-16 text-[#2a9dab] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Completing Calibration</h3>
+            <p className="text-gray-600 mb-4">Please wait while we finalize your calibration...</p>
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="bg-[#2a9dab] h-2 rounded-full animate-pulse" style={{
+                width: '80%',
+                animation: 'progressBar 2s ease-in-out infinite'
+              }}></div>
+            </div>
+            <style jsx>{`
+              @keyframes progressBar {
+                0% { width: 0%; }
+                50% { width: 80%; }
+                100% { width: 0%; }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
+
       <Toaster position="top-right" />
       <div className="w-full mx-auto">
         <div className="bg-white p-8 rounded-lg shadow-md w-full mb-8 border border-blue-100 relative">
           {/* Close (X) Button */}
           <button
             onClick={() => setShowSimpleCloseConfirm(true)}
-            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-lg h-8 w-8 flex items-center justify-center rounded hover:bg-gray-200 transition-colors"
+            className="absolute top-4 right-4 text-gray-700 hover:text-gray-900 text-xl h-10 w-10 flex items-center justify-center rounded transition-colors font-bold"
             title="Close"
             aria-label="Close"
           >
@@ -1019,11 +1077,19 @@ function TestWeightsCalibration() {
                           !preparation.humidity) {
                         toast.error('Please fill in all Preparation fields before proceeding.', {
                           position: 'top-center',
-                          duration: 4000,
+                          duration: 5000,
                           style: {
                             textAlign: 'center',
-                            fontSize: '14px',
-                            fontWeight: '500'
+                            fontSize: '18px',
+                            fontWeight: '600',
+                            padding: '20px 32px',
+                            minWidth: '450px',
+                            backgroundColor: '#fef2f2',
+                            color: '#000000',
+                            border: '2px solid #fecaca',
+                            borderRadius: '12px',
+                            boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                            backdropFilter: 'blur(8px)'
                           }
                         });
                         return;
@@ -1036,11 +1102,19 @@ function TestWeightsCalibration() {
                           isNaN(Number(row.T2)) || isNaN(Number(row.S2)))) {
                         toast.error('Please fill in all ABBA Weighing values before proceeding.', {
                           position: 'top-center',
-                          duration: 4000,
+                          duration: 5000,
                           style: {
                             textAlign: 'center',
-                            fontSize: '14px',
-                            fontWeight: '500'
+                            fontSize: '18px',
+                            fontWeight: '600',
+                            padding: '20px 32px',
+                            minWidth: '450px',
+                            backgroundColor: '#fef2f2',
+                            color: '#000000',
+                            border: '2px solid #fecaca',
+                            borderRadius: '12px',
+                            boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                            backdropFilter: 'blur(8px)'
                           }
                         });
                         return;
@@ -1060,11 +1134,19 @@ function TestWeightsCalibration() {
                         !preparation.humidity) {
                       toast.error('Please complete all calibration steps before confirming.', {
                         position: 'top-center',
-                        duration: 4000,
+                        duration: 5000,
                         style: {
                           textAlign: 'center',
-                          fontSize: '14px',
-                          fontWeight: '500'
+                          fontSize: '18px',
+                          fontWeight: '600',
+                          padding: '20px 32px',
+                          minWidth: '450px',
+                          backgroundColor: '#fef2f2',
+                          color: '#000000',
+                          border: '2px solid #fecaca',
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                          backdropFilter: 'blur(8px)'
                         }
                       });
                       return;
@@ -1075,11 +1157,19 @@ function TestWeightsCalibration() {
                         isNaN(Number(row.T2)) || isNaN(Number(row.S2)))) {
                       toast.error('Please complete all ABBA Weighing values before confirming.', {
                         position: 'top-center',
-                        duration: 4000,
+                        duration: 5000,
                         style: {
                           textAlign: 'center',
-                          fontSize: '14px',
-                          fontWeight: '500'
+                          fontSize: '18px',
+                          fontWeight: '600',
+                          padding: '20px 32px',
+                          minWidth: '450px',
+                          backgroundColor: '#fef2f2',
+                          color: '#000000',
+                          border: '2px solid #fecaca',
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                          backdropFilter: 'blur(8px)'
                         }
                       });
                       return;
@@ -1109,79 +1199,55 @@ function TestWeightsCalibration() {
         isLoading={isSaving}
       />
 
-      {/* Calibration Confirmation Modal (simple) */}
-      {showCalibrationConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-lg p-6 w-96">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Confirm Calibration</h2>
-            <p className="text-gray-600 mb-6">Are you sure you want to confirm this calibration?</p>
-            <div className="flex justify-end gap-3">
-              <button 
-                onClick={() => setShowCalibrationConfirm(false)} 
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
-                disabled={isCalibrationLoading}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmCalibrationAction}
-                disabled={isCalibrationLoading}
-                className={`px-4 py-2 text-white rounded-lg font-medium ${isCalibrationLoading ? 'bg-red-400' : 'bg-red-600 hover:bg-red-700'}`}
-              >
-                {isCalibrationLoading ? 'Processing...' : 'Confirm'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Calibration Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showCalibrationConfirm}
+        onClose={() => setShowCalibrationConfirm(false)}
+        onConfirm={handleConfirmCalibrationAction}
+        title="Confirm Calibration"
+        message="Are you sure you want to confirm this calibration?"
+        type="success"
+        confirmText="Confirm"
+        cancelText="Cancel"
+        isLoading={isCalibrationLoading}
+      />
 
-      {/* Simple Close Confirmation Modal (for X button) */}
-      {showSimpleCloseConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-lg p-6 w-96">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Confirm Cancellation</h2>
-            <p className="text-gray-600 mb-6">Are you sure you want to cancel the calibration?</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setShowSimpleCloseConfirm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">Cancel</button>
-              <button onClick={() => { setShowSimpleCloseConfirm(false); handleConfirmBack(); }} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">Confirm</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Simple Close Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showSimpleCloseConfirm}
+        onClose={() => setShowSimpleCloseConfirm(false)}
+        onConfirm={() => { setShowSimpleCloseConfirm(false); handleConfirmBack(); }}
+        title="Confirm Cancellation"
+        message="Are you sure you want to cancel the calibration?"
+        type="warning"
+        confirmText="Leave Anyway"
+        cancelText="Stay Here"
+        isLoading={false}
+      />
 
-      {/* Next Step Confirmation Modal (simple) */}
-      {showNextConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-lg p-6 w-96">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">{nextConfirmTitle}</h2>
-            <p className="text-gray-600 mb-6">{nextConfirmMessage}</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setShowNextConfirm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">Cancel</button>
-              <button
-                onClick={async () => {
-                  try {
-                    setIsNextSaving(true);
-                    const ok = await handleAutoSave();
-                    if (ok) {
-                      toast.success('Progress saved.');
-                      setShowNextConfirm(false);
-                      setCurrentStep((s) => Math.min(3, s + 1));
-                    } else {
-                      toast.error('Failed to save progress.');
-                    }
-                  } finally {
-                    setIsNextSaving(false);
-                  }
-                }}
-                disabled={isNextSaving}
-                className={`px-4 py-2 text-white rounded-lg font-medium ${isNextSaving ? 'bg-red-400' : 'bg-red-600 hover:bg-red-700'}`}
-              >
-                {isNextSaving ? 'Saving…' : 'Save & Continue'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Next Step Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showNextConfirm}
+        onClose={() => setShowNextConfirm(false)}
+        onConfirm={async () => {
+          try {
+            setIsNextSaving(true);
+            await manualSave();
+            setShowNextConfirm(false);
+            setCurrentStep((s) => Math.min(3, s + 1));
+          } catch (error) {
+            toast.error('Failed to save progress.');
+          } finally {
+            setIsNextSaving(false);
+          }
+        }}
+        title="Proceed to next step?"
+        message="Your progress will be saved before moving to the next step."
+        type="info"
+        confirmText="Save & Continue"
+        cancelText="Stay Here"
+        isLoading={isNextSaving}
+      />
     </div>
   );
 }

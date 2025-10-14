@@ -14,7 +14,9 @@ $db = $database->getConnection();
 $data = json_decode(file_get_contents("php://input"));
 
 if(!empty($data->email) && !empty($data->password)) {
-    $query = "SELECT id, email, password, role, first_name, last_name, status FROM users WHERE email = ?";
+    $query = "SELECT id, email, password, role, first_name, last_name, status, 
+                     COALESCE(require_password_change, 0) AS require_password_change 
+              FROM users WHERE email = ?";
     $stmt = $db->prepare($query);
     $stmt->execute([$data->email]);
     
@@ -61,11 +63,13 @@ if(!empty($data->email) && !empty($data->password)) {
                 array(
                     "message" => "Login successful.",
                     "jwt" => $jwt,
+                    "id" => $row['id'],
                     "email" => $row['email'],
                     "role" => $row['role'],
                     "first_name" => $row['first_name'],
                     "last_name" => $row['last_name'],
-                    "full_name" => $row['first_name'] . ' ' . $row['last_name']
+                    "full_name" => $row['first_name'] . ' ' . $row['last_name'],
+                    "require_password_change" => (bool)$row['require_password_change']
                 ));
         } else {
             http_response_code(401);

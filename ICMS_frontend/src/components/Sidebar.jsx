@@ -2,6 +2,7 @@ import React, { useState, createContext, useContext, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Modal from './Modal';
+import ConfirmationModal from './ConfirmationModal';
 import { useTheme } from '../context/ThemeContext';
 import { 
   RiDashboardLine, 
@@ -23,13 +24,15 @@ import {
   RiPaletteLine,
   RiSearchLine,
   RiFileList3Line,
-  RiMailLine
+  RiMailLine,
+  RiPriceTag3Line
 } from 'react-icons/ri';
 import { FiBox } from 'react-icons/fi';
 import { MdScience } from 'react-icons/md';
 import { apiService } from '../services/api';
 import { toast } from 'react-hot-toast';
 import { RiLockPasswordLine } from 'react-icons/ri';
+import { AiOutlineEye, AiOutlineEyeInvisible } from 'react-icons/ai';
 
 // InventoryTabContext for global tab selection
 export const InventoryTabContext = createContext({ selectedTab: 'test-weight', setSelectedTab: () => {} });
@@ -98,6 +101,10 @@ const Sidebar = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   useEffect(() => {
     const fetchPending = async () => {
@@ -433,8 +440,25 @@ const Sidebar = () => {
       toast.error('Please fill out all password fields');
       return false;
     }
-    if (newPassword.length < 8) {
+    const hasMinLength = newPassword.length >= 8;
+    const hasLetter = /[A-Za-z]/.test(newPassword);
+    const hasNumber = /\d/.test(newPassword);
+    const hasSpecial = /[^A-Za-z0-9]/.test(newPassword);
+
+    if (!hasMinLength) {
       toast.error('New password must be at least 8 characters');
+      return false;
+    }
+    if (!hasLetter) {
+      toast.error('New password must include at least one alphabet');
+      return false;
+    }
+    if (!hasNumber) {
+      toast.error('New password must include at least one numeric character');
+      return false;
+    }
+    if (!hasSpecial) {
+      toast.error('New password must include at least one special character');
       return false;
     }
     if (newPassword !== confirmPassword) {
@@ -458,10 +482,15 @@ const Sidebar = () => {
         confirm_password: confirmPassword,
       });
       if (resp.data?.success) {
-        toast.success('Password updated successfully');
+        toast.success('Password updated successfully. You will be logged out for security.');
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
+        // Auto-logout and redirect to login page after password change
+        setTimeout(() => {
+          logout();
+          navigate('/login');
+        }, 1500); // Small delay to show the success message
       } else {
         toast.error(resp.data?.message || 'Failed to change password');
       }
@@ -681,6 +710,29 @@ const Sidebar = () => {
                   Configure Email
                 </button>
               </div>
+
+              {/* Sample Management Card - Admin and IT Programmer only */}
+              {(user?.role === 'admin' || user?.role === 'it_programmer') && (
+                <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 p-8 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-100 to-indigo-200 dark:from-indigo-900/40 dark:to-indigo-800/40 flex items-center justify-center shadow-md">
+                      <RiPriceTag3Line className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Sample Management</h3>
+                  </div>
+                  <p className="text-base text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">Manage calibration and testing service prices for different sample types</p>
+                  <button
+                    onClick={() => {
+                      setShowSettingsModal(false);
+                      navigate('/sample-management');
+                    }}
+                    className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-2xl hover:from-indigo-700 hover:to-indigo-800 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                  >
+                    <RiPriceTag3Line className="w-5 h-5" />
+                    Manage Sample Pricing
+                  </button>
+                </div>
+              )}
 
               {/* Signatory Management Card - Admin and IT Programmer only */}
               {(user?.role === 'admin' || user?.role === 'it_programmer') && (
@@ -1065,33 +1117,66 @@ const Sidebar = () => {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Password</label>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-transparent shadow-md"
-              placeholder="Enter current password"
-            />
+            <div className="relative">
+              <input
+                type={showCurrent ? 'text' : 'password'}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="w-full px-4 py-3 pr-16 rounded-2xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-transparent shadow-md"
+                placeholder="Enter current password"
+              />
+              <button type="button" aria-label={showCurrent ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300" onClick={() => setShowCurrent(!showCurrent)}>
+                {showCurrent ? <AiOutlineEyeInvisible size={18} /> : <AiOutlineEye size={18} />}
+              </button>
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">New Password</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-transparent shadow-md"
-              placeholder="At least 8 characters"
-            />
+            <div className="relative">
+              <input
+                type={showNew ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full px-4 py-3 pr-16 rounded-2xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-transparent shadow-md"
+                placeholder="At least 8 characters"
+              />
+              <button type="button" aria-label={showNew ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300" onClick={() => setShowNew(!showNew)}>
+                {showNew ? <AiOutlineEyeInvisible size={18} /> : <AiOutlineEye size={18} />}
+              </button>
+            </div>
+            <div className="mt-2 text-xs text-gray-600 dark:text-gray-300 space-y-1">
+              <div className={`flex items-center gap-2 ${newPassword.length >= 8 ? 'text-green-600' : ''}`}>
+                <span>{newPassword.length >= 8 ? '✓' : '•'}</span>
+                <span>At least 8 characters</span>
+              </div>
+              <div className={`flex items-center gap-2 ${/[A-Za-z]/.test(newPassword) ? 'text-green-600' : ''}`}>
+                <span>{/[A-Za-z]/.test(newPassword) ? '✓' : '•'}</span>
+                <span>Contains an alphabet</span>
+              </div>
+              <div className={`flex items-center gap-2 ${/\d/.test(newPassword) ? 'text-green-600' : ''}`}>
+                <span>{/\d/.test(newPassword) ? '✓' : '•'}</span>
+                <span>Contains a number</span>
+              </div>
+              <div className={`flex items-center gap-2 ${/[^A-Za-z0-9]/.test(newPassword) ? 'text-green-600' : ''}`}>
+                <span>{/[^A-Za-z0-9]/.test(newPassword) ? '✓' : '•'}</span>
+                <span>Contains a special character</span>
+              </div>
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm New Password</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-transparent shadow-md"
-              placeholder="Re-enter new password"
-            />
+            <div className="relative">
+              <input
+                type={showConfirm ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full px-4 py-3 pr-16 rounded-2xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-transparent shadow-md"
+                placeholder="Re-enter new password"
+              />
+              <button type="button" aria-label={showConfirm ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300" onClick={() => setShowConfirm(!showConfirm)}>
+                {showConfirm ? <AiOutlineEyeInvisible size={18} /> : <AiOutlineEye size={18} />}
+              </button>
+            </div>
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button
@@ -1101,13 +1186,10 @@ const Sidebar = () => {
               Cancel
             </button>
             <button
-              onClick={async () => {
+              onClick={() => {
                 const ok = validatePasswordInputs();
                 if (!ok) return;
-                await handleChangePassword();
-                // If success, close modal
-                // We check by ensuring fields reset and no error toast fired
-                setShowChangePasswordModal(false);
+                setShowConfirmDialog(true);
               }}
               disabled={changingPassword}
               className="px-6 py-3 bg-gradient-to-r from-[#2a9dab] to-[#217a8c] text-white rounded-2xl hover:from-[#217a8c] hover:to-[#1b6671] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5"
@@ -1117,6 +1199,27 @@ const Sidebar = () => {
           </div>
         </div>
       </Modal>
+
+      <ConfirmationModal
+        isOpen={showConfirmDialog}
+        onClose={() => setShowConfirmDialog(false)}
+        onConfirm={async () => {
+          setChangingPassword(true);
+          try {
+            await handleChangePassword();
+            setShowConfirmDialog(false);
+            setShowChangePasswordModal(false);
+          } finally {
+            setChangingPassword(false);
+          }
+        }}
+        title="Confirm Changes"
+        message="Are you sure you want to change your password now?"
+        type="info"
+        confirmText={changingPassword ? "Saving..." : "Confirm"}
+        cancelText="Cancel"
+        isLoading={changingPassword}
+      />
 
     </aside>
   );

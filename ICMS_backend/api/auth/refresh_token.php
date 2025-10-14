@@ -6,7 +6,13 @@ require_once 'verify_token.php';
 use \Firebase\JWT\JWT;
 
 try {
-    $userData = verifyToken();
+    $authResult = verifyToken();
+    if (!$authResult['success']) {
+        http_response_code(401);
+        echo json_encode(array("success" => false, "message" => $authResult['message'] || "Invalid token."));
+        exit();
+    }
+    $userData = $authResult['user'];
     $db = new Database();
     $conn = $db->getConnection();
     $role = $userData->role;

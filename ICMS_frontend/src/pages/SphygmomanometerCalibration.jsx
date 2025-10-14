@@ -13,15 +13,30 @@ const CardSection = ({ children, className = '' }) => (
   </div>
 );
 
-const ModernInput = (props) => (
-  <input
-    {...props}
-    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] transition-all duration-200 text-sm bg-white shadow-sm hover:border-gray-400 ${props.className || ''}`}
-    style={{
-      transition: 'all 0.2s ease-in-out'
-    }}
-  />
-);
+const ModernInput = (props) => {
+  const handleKeyDown = (e) => {
+    // Prevent E, e, +, - characters in number inputs to avoid scientific notation
+    if (props.type === 'number' && ['e', 'E', '+', '-'].includes(e.key)) {
+      e.preventDefault();
+    }
+    
+    // Call original onKeyDown if provided
+    if (props.onKeyDown) {
+      props.onKeyDown(e);
+    }
+  };
+
+  return (
+    <input
+      {...props}
+      onKeyDown={handleKeyDown}
+      className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] transition-all duration-200 text-sm bg-white shadow-sm hover:border-gray-400 ${props.className || ''}`}
+      style={{
+        transition: 'all 0.2s ease-in-out'
+      }}
+    />
+  );
+};
 
 const ModernButton = (props) => (
   <button
@@ -46,6 +61,11 @@ function SphygmomanometerCalibration() {
   const serialNumber = location.state?.serialNumber || '';
   const equipmentId = location.state?.equipmentId || null;
   const [currentStep, setCurrentStep] = useState(1);
+  
+  // Validation and confirmation state
+  const [showNextConfirm, setShowNextConfirm] = useState(false);
+  const [isNextSaving, setIsNextSaving] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
 
   const [calDetails, setCalDetails] = useState({
     referenceNo: '',
@@ -199,6 +219,9 @@ function SphygmomanometerCalibration() {
   const [calibrationConfirmTitle, setCalibrationConfirmTitle] = useState("");
   const [calibrationConfirmMessage, setCalibrationConfirmMessage] = useState("");
   const [calibrationConfirmType, setCalibrationConfirmType] = useState("info");
+  
+  // Calibration completion loading state
+  const [isCalibrationLoading, setIsCalibrationLoading] = useState(false);
 
   // State for simple close confirmation
   const [showSimpleCloseConfirm, setShowSimpleCloseConfirm] = useState(false);
@@ -349,11 +372,147 @@ function SphygmomanometerCalibration() {
         date_started: new Date().toISOString().slice(0, 19).replace('T', ' '),
         date_completed: new Date().toISOString().slice(0, 19).replace('T', ' '),
       });
-      toast.success('Calibration record saved');
     } catch (e) {
       console.error('Save calibration error:', e);
       toast.error('Failed to save calibration record: ' + (e.response?.data?.message || e.message));
     }
+  };
+
+  // Validation functions for each step
+  const validateStep = (step) => {
+    const errors = {};
+    
+    switch (step) {
+      case 1: // Equipment & Device Info
+        if (!calDetails.model.trim()) errors.model = 'Model is required';
+        if (!calDetails.serialNo.trim()) errors.serialNo = 'Serial No. is required';
+        if (!calDetails.range.trim()) errors.range = 'Range is required';
+        if (!calDetails.accuracy.trim()) errors.accuracy = 'Accuracy is required';
+        if (!calDetails.envTempStart.trim()) errors.envTempStart = 'Temperature Start is required';
+        if (!calDetails.envHumidityStart.trim()) errors.envHumidityStart = 'Humidity Start is required';
+        break;
+        
+        case 2: // Standard Readings (IPRT)
+          if (iprtRows.some(row => {
+            const x1 = row.X1?.toString().trim();
+            const x2 = row.X2?.toString().trim();
+            const x3 = row.X3?.toString().trim();
+            const x4 = row.X4?.toString().trim();
+            return !x1 || !x2 || !x3 || !x4 || 
+                   x1 === '' || x2 === '' || x3 === '' || x4 === '' ||
+                   isNaN(Number(x1)) || isNaN(Number(x2)) || 
+                   isNaN(Number(x3)) || isNaN(Number(x4));
+          })) {
+            errors.iprtReadings = 'All IPRT readings must be completed with valid numbers';
+          }
+          break;
+          
+        case 3: // UUT Readings (DKD R-6-1)
+          if (uutRows.some(row => {
+            const x1 = row.X1?.toString().trim();
+            const x2 = row.X2?.toString().trim();
+            const x3 = row.X3?.toString().trim();
+            const x4 = row.X4?.toString().trim();
+            return !x1 || !x2 || !x3 || !x4 || 
+                   x1 === '' || x2 === '' || x3 === '' || x4 === '' ||
+                   isNaN(Number(x1)) || isNaN(Number(x2)) || 
+                   isNaN(Number(x3)) || isNaN(Number(x4));
+          })) {
+            errors.uutReadings = 'All UUT readings must be completed with valid numbers';
+          }
+          break;
+          
+        case 4: // Rate of Pressure Loss
+          if (lossFirst.some(value => {
+            const val = value?.toString().trim();
+            return !val || val === '' || isNaN(Number(val));
+          })) {
+            errors.lossFirst = 'All first pressure loss readings must be completed with valid numbers';
+          }
+          if (lossAfter5.some(value => {
+            const val = value?.toString().trim();
+            return !val || val === '' || isNaN(Number(val));
+          })) {
+            errors.lossAfter5 = 'All after 5 minutes pressure loss readings must be completed with valid numbers';
+          }
+          break;
+          
+        case 5: // Rapid Exhaust Valve Test
+          const elapsed = rapidElapsedSeconds?.toString().trim();
+          if (!elapsed || elapsed === '' || isNaN(Number(elapsed))) {
+            errors.rapidElapsedSeconds = 'Elapsed time must be a valid number';
+          }
+          break;
+        
+      default:
+        break;
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Handle next step with validation and confirmation
+  const handleNextStep = async () => {
+    // Validate current step
+    if (!validateStep(currentStep)) {
+      toast.error('Please complete all required fields before proceeding.', {
+        position: 'top-center',
+        duration: 5000,
+        style: {
+          textAlign: 'center',
+          fontSize: '18px',
+          fontWeight: '600',
+          padding: '20px 32px',
+          minWidth: '450px',
+          backgroundColor: '#fef2f2',
+          color: '#000000',
+          border: '2px solid #fecaca',
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+          backdropFilter: 'blur(8px)'
+        }
+      });
+      return;
+    }
+    
+    // Show confirmation modal
+    setShowNextConfirm(true);
+  };
+
+  // Handle confirmation for next step
+  const handleConfirmNext = async () => {
+    setIsNextSaving(true);
+    try {
+      await saveCalibration();
+      toast.success('Progress saved', {
+        position: 'top-center',
+        duration: 2000,
+        style: {
+          background: '#10B981',
+          color: '#fff',
+          padding: '16px 24px',
+          borderRadius: '8px',
+          fontSize: '16px',
+          fontWeight: '500',
+          minWidth: '300px',
+          textAlign: 'center',
+          boxShadow: '0 8px 16px rgba(16, 185, 129, 0.3)',
+          border: '1px solid rgba(255, 255, 255, 0.1)'
+        }
+      });
+      setShowNextConfirm(false);
+      setCurrentStep((s) => Math.min(6, s + 1));
+    } catch (error) {
+      toast.error('Failed to save progress.');
+    } finally {
+      setIsNextSaving(false);
+    }
+  };
+
+  // Handle cancel for next step confirmation
+  const handleCancelNext = () => {
+    setShowNextConfirm(false);
   };
 
   // Show confirmation dialog before calibration
@@ -370,6 +529,7 @@ function SphygmomanometerCalibration() {
   const handleConfirmCalibrationAction = async () => {
     setShowCalibrationConfirm(false);
     
+    setIsCalibrationLoading(true);
     try {
       // Save the calibration record first
       await saveCalibration();
@@ -389,6 +549,8 @@ function SphygmomanometerCalibration() {
     } catch (error) {
       console.error('Error in calibration confirmation:', error);
       toast.error('Failed to complete calibration: ' + (error.message || 'Unknown error'));
+    } finally {
+      setIsCalibrationLoading(false);
     }
   };
 
@@ -398,11 +560,19 @@ function SphygmomanometerCalibration() {
     if (validationErrors.length > 0) {
       toast.error('Please complete all required fields before confirming calibration', {
         position: 'top-center',
-        duration: 4000,
+        duration: 5000,
         style: {
           textAlign: 'center',
-          fontSize: '14px',
-          fontWeight: '500'
+          fontSize: '18px',
+          fontWeight: '600',
+          padding: '20px 32px',
+          minWidth: '450px',
+          backgroundColor: '#fef2f2',
+          color: '#dc2626',
+          border: '2px solid #fecaca',
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+          backdropFilter: 'blur(8px)'
         }
       });
       validationErrors.forEach(error => toast.error(error));
@@ -842,13 +1012,42 @@ function SphygmomanometerCalibration() {
 
   return (
     <div className="bg-gray-100 min-h-screen p-4">
+      {/* Loading Screen Overlay for Calibration Completion */}
+      {isCalibrationLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100]">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 text-center">
+            <div className="mb-6">
+              <svg className="animate-spin h-16 w-16 text-[#2a9dab] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Completing Calibration</h3>
+            <p className="text-gray-600 mb-4">Please wait while we finalize your calibration...</p>
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="bg-[#2a9dab] h-2 rounded-full animate-pulse" style={{
+                width: '80%',
+                animation: 'progressBar 2s ease-in-out infinite'
+              }}></div>
+            </div>
+            <style jsx>{`
+              @keyframes progressBar {
+                0% { width: 0%; }
+                50% { width: 80%; }
+                100% { width: 0%; }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
+
       <Toaster position="top-right" />
       <div className="w-full mx-auto">
         <div className="bg-white p-8 rounded-lg shadow-md w-full mb-8 border border-blue-100 relative">
           {/* Close (X) Button */}
           <button
             onClick={() => setShowSimpleCloseConfirm(true)}
-            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-lg h-8 w-8 flex items-center justify-center rounded hover:bg-gray-200 transition-colors"
+            className="absolute top-4 right-4 text-gray-700 hover:text-gray-900 text-xl h-10 w-10 flex items-center justify-center rounded transition-colors font-bold"
             title="Close"
             aria-label="Close"
           >
@@ -867,7 +1066,7 @@ function SphygmomanometerCalibration() {
               </div>
               <div className="flex space-x-2">
                 {currentStep < steps.length ? (
-                  <ModernButton onClick={async () => { await saveCalibration(); setCurrentStep(currentStep + 1); }}>Next</ModernButton>
+                  <ModernButton onClick={handleNextStep}>Next</ModernButton>
                 ) : (
                   <ModernButton className="bg-green-600 hover:bg-green-700" onClick={completeCalibration}>Confirm Calibration</ModernButton>
                 )}
@@ -904,20 +1103,17 @@ function SphygmomanometerCalibration() {
       />
 
       {/* Simple Close Confirmation Modal */}
-      {showSimpleCloseConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Leave Calibration?</h3>
-            <p className="text-gray-600 mb-6">
-              You have unsaved changes in your sphygmomanometer calibration. Are you sure you want to leave? Your progress will be lost.
-            </p>
-            <div className="flex justify-end space-x-3">
-              <button onClick={() => setShowSimpleCloseConfirm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">Cancel</button>
-              <button onClick={() => { setShowSimpleCloseConfirm(false); handleConfirmBack(); }} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">Confirm</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmationModal
+        isOpen={showSimpleCloseConfirm}
+        onClose={() => setShowSimpleCloseConfirm(false)}
+        onConfirm={() => { setShowSimpleCloseConfirm(false); handleConfirmBack(); }}
+        title="Leave Calibration?"
+        message="You have unsaved changes in your sphygmomanometer calibration. Are you sure you want to leave? Your progress will be lost."
+        type="warning"
+        confirmText="Leave Anyway"
+        cancelText="Stay Here"
+        isLoading={false}
+      />
 
       {/* Uncertainty Details Modal */}
       {showUDetails && (
@@ -960,6 +1156,19 @@ function SphygmomanometerCalibration() {
           </div>
         </div>
       )}
+      
+      {/* Next Step Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showNextConfirm}
+        onClose={handleCancelNext}
+        onConfirm={handleConfirmNext}
+        title="Proceed to next step?"
+        message="Your progress will be saved before moving to the next step."
+        type="info"
+        confirmText="Save & Continue"
+        cancelText="Stay Here"
+        isLoading={isNextSaving}
+      />
     </div>
   );
 }

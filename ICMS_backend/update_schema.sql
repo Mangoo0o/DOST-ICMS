@@ -1,5 +1,13 @@
 -- SQL commands to update existing tables to match the new schema.
 -- Run these commands on your existing database.
+-- Add require_password_change flag to users (if missing)
+ALTER TABLE `users`
+ADD COLUMN IF NOT EXISTS `require_password_change` TINYINT(1) NOT NULL DEFAULT 0 AFTER `status`;
+
+-- Add require_password_change flag to clients (if missing)
+ALTER TABLE `clients`
+ADD COLUMN IF NOT EXISTS `require_password_change` TINYINT(1) NOT NULL DEFAULT 0 AFTER `password`;
+
 
 -- Update `reservations` table
 ALTER TABLE `reservations`

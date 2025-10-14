@@ -5,9 +5,11 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    port: 5173,
+    host: 'localhost', // Only allow local access
     proxy: {
       '^/api/.*': {
-        target: 'http://localhost/ICMS_backend',
+        target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
         configure: (proxy, options) => {

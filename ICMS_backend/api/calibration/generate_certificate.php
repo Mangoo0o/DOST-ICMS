@@ -1,4 +1,8 @@
 <?php
+// Set proper UTF-8 encoding
+header('Content-Type: text/html; charset=UTF-8');
+mb_internal_encoding('UTF-8');
+
 require_once __DIR__ . '/../../vendor/setasign/fpdf/fpdf.php';
 include_once '../config/db.php';
 
@@ -130,16 +134,36 @@ $input_data = json_decode($record['input_data'], true);
 $result_data = isset($record['result_data']) ? json_decode($record['result_data'], true) : [];
 
 // Fetch calibrator details
-$calibrator_name = 'MA. FERNANDA I BANDA'; // Default fallback (already uppercase)
+$calibrator_name = ''; // Will be set from database
 $calibrator_title = 'Calibration Engineer';
+
 if ($record['calibrated_by']) {
     $calibrator_stmt = $db->prepare('SELECT first_name, last_name, role FROM users WHERE id = :id');
     $calibrator_stmt->bindParam(':id', $record['calibrated_by'], PDO::PARAM_INT);
     $calibrator_stmt->execute();
     $calibrator = $calibrator_stmt->fetch(PDO::FETCH_ASSOC);
+    
     if ($calibrator) {
         $calibrator_name = strtoupper($calibrator['first_name'] . ' ' . $calibrator['last_name']);
         $calibrator_title = 'Calibration Engineer'; // Always use proper title
+    } else {
+        // If the assigned user doesn't exist, get any calibration engineer
+        $eng_stmt = $db->prepare('SELECT first_name, last_name, role FROM users WHERE role = "calibration_engineers" LIMIT 1');
+        $eng_stmt->execute();
+        $eng = $eng_stmt->fetch(PDO::FETCH_ASSOC);
+        if ($eng) {
+            $calibrator_name = strtoupper($eng['first_name'] . ' ' . $eng['last_name']);
+            $calibrator_title = 'Calibration Engineer';
+        }
+    }
+} else {
+    // If no calibrator assigned, get any calibration engineer
+    $eng_stmt = $db->prepare('SELECT first_name, last_name, role FROM users WHERE role = "calibration_engineers" LIMIT 1');
+    $eng_stmt->execute();
+    $eng = $eng_stmt->fetch(PDO::FETCH_ASSOC);
+    if ($eng) {
+        $calibrator_name = strtoupper($eng['first_name'] . ' ' . $eng['last_name']);
+        $calibrator_title = 'Calibration Engineer';
     }
 }
 
@@ -236,9 +260,9 @@ for ($i = 0; $i < 3; $i++) {
     $avg = function($arr) { return (is_array($arr) && count($arr)) ? array_sum($arr)/count($arr) : 0; };
     $U_arr = $result_data['U_temp_arr'] ?? $result_data['U_temp'] ?? [];
     if (!is_array($U_arr)) $U_arr = [$U_arr,$U_arr,$U_arr];
-    $pdf->Cell($colWidths[0], 8, number_format($avg($ref),2).' °C', 1, 0, 'L');
-    $pdf->Cell($colWidths[1], 8, number_format($avg($uuc),2).' °C', 1, 0, 'L');
-    $pdf->Cell($colWidths[2], 8, (isset($U_arr[$i]) && !is_nan($U_arr[$i]) ? number_format($U_arr[$i],2) : '').' °C', 1, 1, 'L');
+    $pdf->Cell($colWidths[0], 8, number_format($avg($ref),2).chr(176).'C', 1, 0, 'L');
+    $pdf->Cell($colWidths[1], 8, number_format($avg($uuc),2).chr(176).'C', 1, 0, 'L');
+    $pdf->Cell($colWidths[2], 8, (isset($U_arr[$i]) && !is_nan($U_arr[$i]) ? number_format($U_arr[$i],2) : '').chr(176).'C', 1, 1, 'L');
 }
 $pdf->Ln(1);
 // Humidity Table
@@ -308,24 +332,56 @@ $pdf->Ln(1);
 $pdf->SetFont('Arial', 'B', 9);
 $pdf->Cell(0, 6, 'ENVIRONMENTAL CONDITIONS', 0, 1, 'L');
 $pdf->SetFont('Arial', '', 9);
-// Calculate averages from input data
+
+// Calculate averages from start and end values in calDetails
 $avg_temp = 0;
 $avg_humidity = 0;
-if (isset($input_data['refReadings']['temp']) && is_array($input_data['refReadings']['temp'])) {
+
+// Check if calDetails exists and has temperature/humidity start/end values
+if (isset($input_data['calDetails'])) {
+    $calDetails = $input_data['calDetails'];
+    
+    // Calculate average temperature from start and end values
+    if (isset($calDetails['tempStart']) && isset($calDetails['tempEnd'])) {
+        $tempStart = floatval($calDetails['tempStart']);
+        $tempEnd = floatval($calDetails['tempEnd']);
+        if ($tempStart > 0 && $tempEnd > 0) {
+            $avg_temp = ($tempStart + $tempEnd) / 2;
+        }
+    }
+    
+    // Calculate average humidity from start and end values
+    if (isset($calDetails['humidityStart']) && isset($calDetails['humidityEnd'])) {
+        $humidityStart = floatval($calDetails['humidityStart']);
+        $humidityEnd = floatval($calDetails['humidityEnd']);
+        if ($humidityStart > 0 && $humidityEnd > 0) {
+            $avg_humidity = ($humidityStart + $humidityEnd) / 2;
+        }
+    }
+}
+
+// Fallback to refReadings calculation if calDetails values are not available
+if ($avg_temp == 0 && isset($input_data['refReadings']['temp']) && is_array($input_data['refReadings']['temp'])) {
     $all = array_merge(...array_values($input_data['refReadings']['temp']));
     $avg_temp = count($all) ? array_sum($all)/count($all) : 0;
 }
-if (isset($input_data['refReadings']['humidity']) && is_array($input_data['refReadings']['humidity'])) {
+
+if ($avg_humidity == 0 && isset($input_data['refReadings']['humidity']) && is_array($input_data['refReadings']['humidity'])) {
     $all = array_merge(...array_values($input_data['refReadings']['humidity']));
     $avg_humidity = count($all) ? array_sum($all)/count($all) : 0;
 }
+
+// Default fallback values
+if ($avg_temp == 0) $avg_temp = 23.0;
+if ($avg_humidity == 0) $avg_humidity = 50.0;
+
 $pdf->Cell(55, 6, 'Ambient Temperature', 0, 0, 'L');
 $pdf->Cell(10, 6, ':', 0, 0, 'C');
-$pdf->Cell(30, 6, number_format($avg_temp,2), 0, 0, 'L');
-$pdf->Cell(0, 6, '°C', 0, 1, 'L');
+$pdf->Cell(30, 6, number_format($avg_temp, 2), 0, 0, 'L');
+$pdf->Cell(0, 6, chr(176).'C', 0, 1, 'L');
 $pdf->Cell(55, 6, 'Relative Humidity', 0, 0, 'L');
 $pdf->Cell(10, 6, ':', 0, 0, 'C');
-$pdf->Cell(30, 6, number_format($avg_humidity,2), 0, 0, 'L');
+$pdf->Cell(30, 6, number_format($avg_humidity, 2), 0, 0, 'L');
 $pdf->Cell(0, 6, '%RH', 0, 1, 'L');
 $pdf->Ln(1);
 

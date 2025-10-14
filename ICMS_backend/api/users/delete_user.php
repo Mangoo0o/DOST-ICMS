@@ -11,7 +11,16 @@ require_once __DIR__ . '/../auth/verify_token.php';
 
 try {
     // Verify the token and get user data
-    $userData = verifyToken();
+    $authResult = verifyToken();
+    
+    // Check if token verification was successful
+    if (!$authResult['success']) {
+        http_response_code(401);
+        echo json_encode(array("message" => $authResult['message'] || "Invalid token."));
+        exit();
+    }
+    
+    $userData = $authResult['user'];
     
     // Check if the user is an admin
     if ($userData->role !== 'admin') {

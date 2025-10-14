@@ -8,9 +8,12 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import './custom-datepicker.css';
 import { getProvinces, getCities, getBarangays } from '../data/philippineLocations';
+import { MdWarning, MdInfo, MdCheckCircle } from 'react-icons/md';
 import { FaRegCalendarAlt } from 'react-icons/fa';
 import '../styles/no-scrollbar.css';
 import { extractPdfTextFromFile, parsePdfFields } from '../utils/pdfUtils';
+import ConfirmationModal from '../components/ConfirmationModal';
+import { samplePricingService } from '../utils/samplePricing';
 
 const CustomDateInput = React.forwardRef(({ value, onClick, onClear, placeholder }, ref) => (
   <div className="relative w-full">
@@ -33,25 +36,32 @@ const ConfirmCancelModal = ({ isOpen, onConfirm, onClose }) => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+        <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-[60]">
             <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="bg-white rounded-lg p-6 w-96"
+                className="bg-white rounded-2xl p-6 w-96 shadow-2xl border border-gray-100"
             >
-                <h2 className="text-xl font-semibold text-gray-800 mb-4">Confirm Cancellation</h2>
-                <p className="text-gray-600 mb-6">Are you sure you want to cancel the request?</p>
-                <div className="flex justify-end gap-3">
+                <div className="flex items-start">
+                    <div className="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-br from-red-50 to-rose-100 border-2 border-red-200">
+                        <MdWarning className="w-6 h-6 text-red-500" />
+                    </div>
+                    <div className="ml-4 flex-1">
+                        <h2 className="text-lg font-semibold text-gray-900 leading-6">Confirm Cancellation</h2>
+                        <p className="text-sm text-gray-600 leading-relaxed mt-2">Are you sure you want to cancel the request?</p>
+                    </div>
+                </div>
+                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+                        className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={onConfirm}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
+                        className="px-6 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold shadow-lg"
                     >
                         Confirm
                     </button>
@@ -61,9 +71,7 @@ const ConfirmCancelModal = ({ isOpen, onConfirm, onClose }) => {
     );
 };
 
-const ClientInfoModal = ({ isOpen, onClose, onConfirm, clientInfo, onClientInfoChange }) => {
-    console.log('ClientInfoModal render - isOpen:', isOpen, 'clientInfo:', clientInfo);
-    console.log('ClientInfoModal - clientInfo.email:', clientInfo?.email);
+const ClientInfoModal = React.memo(({ isOpen, onClose, onConfirm, clientInfo, onClientInfoChange }) => {
     if (!isOpen) return null;
 
     return (
@@ -188,31 +196,38 @@ const ClientInfoModal = ({ isOpen, onClose, onConfirm, clientInfo, onClientInfoC
             </motion.div>
         </div>
     );
-};
+});
 
 const ConfirmEditModal = ({ isOpen, onConfirm, onClose }) => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+        <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-[60]">
             <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="bg-white rounded-lg p-6 w-96"
+                className="bg-white rounded-2xl p-6 w-96 shadow-2xl border border-gray-100"
             >
-                <h2 className="text-xl font-semibold text-gray-800 mb-4">Confirm Edit</h2>
-                <p className="text-gray-600 mb-6">Are you sure you want to save these changes?</p>
-                <div className="flex justify-end gap-3">
+                <div className="flex items-start">
+                    <div className="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-br from-blue-50 to-indigo-100 border-2 border-blue-200">
+                        <MdInfo className="w-6 h-6 text-[#2a9dab]" />
+                    </div>
+                    <div className="ml-4 flex-1">
+                        <h2 className="text-lg font-semibold text-gray-900 leading-6">Confirm Edit</h2>
+                        <p className="text-sm text-gray-600 leading-relaxed mt-2">Are you sure you want to save these changes?</p>
+                    </div>
+                </div>
+                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
+                        className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={onConfirm}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                        className="px-6 py-2.5 bg-[#2a9dab] text-white rounded-xl hover:bg-[#238a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2a9dab] transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold shadow-lg"
                     >
                         Confirm
                     </button>
@@ -226,27 +241,36 @@ const ConfirmSubmitModal = ({ isOpen, onConfirm, onClose, isLoading }) => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+        <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-[60]">
             <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="bg-white rounded-lg p-6 w-96"
+                className="bg-white rounded-2xl p-6 w-96 shadow-2xl border border-gray-100"
             >
-                <h2 className="text-xl font-semibold text-gray-800 mb-4">Confirm Submission</h2>
-                <p className="text-gray-600 mb-6">Are you sure you want to submit this request? This action cannot be undone.</p>
-                <div className="flex justify-end gap-3">
+                <div className="flex items-start">
+                    <div className="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-br from-emerald-50 to-green-100 border-2 border-emerald-200">
+                        <MdCheckCircle className="w-6 h-6 text-[#2a9dab]" />
+                    </div>
+                    <div className="ml-4 flex-1">
+                        <h2 className="text-lg font-semibold text-gray-900 leading-6">Confirm Submission</h2>
+                        <p className="text-sm text-gray-600 leading-relaxed mt-2">Are you sure you want to submit this request? This action cannot be undone.</p>
+                    </div>
+                </div>
+                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
                     <button
                         onClick={onClose}
                         disabled={isLoading}
-                        className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={onConfirm}
                         disabled={isLoading}
-                        className="px-4 py-2 bg-[#2a9dab] text-white rounded-lg hover:bg-[#217a8c] font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        className={`px-6 py-2.5 bg-[#2a9dab] text-white rounded-xl hover:bg-[#238a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2a9dab] transition-all duration-200 font-semibold shadow-lg flex items-center gap-2 ${
+                            isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md transform hover:-translate-y-0.5'
+                        }`}
                     >
                         {isLoading ? (
                             <>
@@ -328,7 +352,7 @@ const FilePreviewModal = ({ isOpen, file, url, onConfirm, onClose }) => {
           )}
         </div>
         <div className="mt-4 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium">Cancel</button>
+          <button onClick={onClose} className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold">Cancel</button>
           <button onClick={onConfirm} className="px-4 py-2 bg-[#2a9dab] text-white rounded-lg hover:bg-[#217a8c] font-medium">Confirm</button>
         </div>
       </div>
@@ -571,14 +595,14 @@ const AddSampleDetailsModal = ({ isOpen, onClose, onConfirm, fileName, isSubmitt
               <h3 className="text-lg font-semibold text-gray-800 mb-2">Remove sample?</h3>
               <p className="text-sm text-gray-600 mb-4">Are you sure you want to remove this sample row?</p>
               <div className="flex justify-end gap-3">
-                <button onClick={handleCancelRemoveRow} className="px-4 py-2 text-gray-600 hover:text-gray-800">Cancel</button>
+                <button onClick={handleCancelRemoveRow} className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold">Cancel</button>
                 <button onClick={handleConfirmRemoveRow} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Remove</button>
               </div>
             </div>
           </div>
         )}
         <div className="mt-6 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium">Cancel</button>
+          <button onClick={onClose} className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold">Cancel</button>
           <button onClick={handleSave} disabled={isSubmitting} className={`px-4 py-2 rounded-lg font-medium text-white ${isSubmitting ? 'bg-[#2a9dab]/60 cursor-not-allowed' : 'bg-[#2a9dab] hover:bg-[#217a8c]'}`}>{isSubmitting ? 'Saving...' : 'Save'}</button>
         </div>
       </div>
@@ -612,14 +636,28 @@ const AddReservationModal = ({ isOpen, onClose, clients, onAdd, reservationData 
   const [expectedCompletionDate, setExpectedCompletionDate] = useState(null);
   const [isExpectedCompletionManuallySet, setIsExpectedCompletionManuallySet] = useState(false);
 
-  // Auto-set expected completion date to 1 week from scheduled date
+  // Auto-set expected completion date to 5 days from scheduled date
   useEffect(() => {
     if (scheduledDate && !isExpectedCompletionManuallySet) {
-      const oneWeekLater = new Date(scheduledDate);
-      oneWeekLater.setDate(oneWeekLater.getDate() + 7);
-      setExpectedCompletionDate(oneWeekLater);
+      const fiveDaysLater = new Date(scheduledDate);
+      fiveDaysLater.setDate(fiveDaysLater.getDate() + 5);
+      setExpectedCompletionDate(fiveDaysLater);
     }
   }, [scheduledDate, isExpectedCompletionManuallySet]);
+  
+  // Load sample pricing data when component mounts
+  useEffect(() => {
+    const loadPricingData = async () => {
+      try {
+        await samplePricingService.getAllPricing();
+      } catch (error) {
+        console.error('Failed to load sample pricing data:', error);
+      }
+    };
+    
+    loadPricingData();
+  }, []);
+  
   const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false);
   const [isEditConfirmOpen, setIsEditConfirmOpen] = useState(false);
   const [isSubmitConfirmOpen, setIsSubmitConfirmOpen] = useState(false);
@@ -844,88 +882,18 @@ const AddReservationModal = ({ isOpen, onClose, clients, onAdd, reservationData 
       }
       // Handle automatic pricing for Test Request/Calibration options
       if (field === 'type') {
-        // Weighing Scale pricing
-        if (updated.section === 'Weighing Scale') {
-          if (value === 'Special Accuracy I (Nawi)') {
-            updated.basePrice = 1200;
-            updated.price = '1,200.00';
-          } else if (value === 'High Accuracy II (Nawi)') {
-            updated.basePrice = 1000;
-            updated.price = '1,000.00';
-          } else if (value === 'Medium Accuracy III (Nawi)') {
-            updated.basePrice = 900;
-            updated.price = '900.00';
-          } else if (value === 'Ordinary III (Nawi)') {
-            updated.basePrice = 280;
-            updated.price = '280.00';
-          } else if (value === 'Weighing Scale Ordinary III (platform balance)') {
-            updated.basePrice = 540;
-            updated.price = '540.00';
-          } else if (!value || value === '') {
-            updated.price = '0.00';
-        updated.basePrice = '';
-          }
-        }
-        // Test-Weights pricing
-        else if (updated.section === 'Test-Weights') {
-          if (value === '1 kg to 10 kg (OIML Class F2)') {
-            updated.basePrice = 600;
-            updated.price = '600.00';
-          } else if (value === '10 kg to 20 kg (OIML Class F2)') {
-            updated.basePrice = 800;
-            updated.price = '800.00';
-          } else if (value === '20 kg to 50 kg (OIML Class F2)') {
-            updated.basePrice = 1000;
-            updated.price = '1,000.00';
-          } else if (value === 'up to 5 kg (OIML Class M1/M2/M3)') {
-            updated.basePrice = 450;
-            updated.price = '450.00';
-          } else if (value === '10 kg to 20 kg (OIML Class M1/M2/M3)') {
-            updated.basePrice = 600;
-            updated.price = '600.00';
-          } else if (value === '25 kg to 50 kg (OIML Class M1/M2/M3)') {
-            updated.basePrice = 700;
-            updated.price = '700.00';
-          } else if (!value || value === '') {
-            updated.price = '0.00';
-            updated.basePrice = '';
-          }
-        }
-        // Thermometer pricing
-        else if (updated.section === 'Thermometer') {
-          if (value === '-20°C to +80°C (Digital Thermometer)') {
-            updated.basePrice = 1700;
-            updated.price = '1,700.00';
-          } else if (value === '-30°C to +100°C (Wall / Refrigerator / Bimetallic Thermometer)') {
-            updated.basePrice = 1020;
-            updated.price = '1,020.00';
-          } else if (value === '0°C to 45°C (Room, Max & Min Liquid, Thermograph Dial Type & Electronics)') {
-            updated.basePrice = 425;
-            updated.price = '425.00';
-          } else if (!value || value === '') {
-            updated.price = '0.00';
-            updated.basePrice = '';
-          }
-        }
-        // Sphygmomanometer pricing
-        else if (updated.section === 'Sphygmomanometer') {
-          if (value === '0 bar to 1 bar mmHg to 750 mmHg') {
-            updated.basePrice = 1300;
-            updated.price = '1,300.00';
-          } else if (!value || value === '') {
-            updated.price = '0.00';
-            updated.basePrice = '';
-          }
-        }
-        // Thermohygrometer pricing
-        else if (updated.section === 'Thermohygrometer') {
-          if (value === '0-100% Rh, 0-100°C (Electronic and Dial Thermohygrometer)') {
-            updated.basePrice = 1550;
-            updated.price = '1,550.00';
-          } else if (!value || value === '') {
-            updated.price = '0.00';
-            updated.basePrice = '';
-          }
+        // Get pricing from cache or fallback to hardcoded values
+        const pricing = samplePricingService.getPricingWithFallback(updated.section, value);
+        
+        if (pricing && pricing.isActive) {
+          updated.basePrice = pricing.basePrice;
+          updated.price = pricing.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } else if (!value || value === '') {
+          updated.price = '0.00';
+          updated.basePrice = '';
+        } else {
+          updated.price = '0.00';
+          updated.basePrice = '';
         }
       }
       
@@ -1183,7 +1151,6 @@ const AddReservationModal = ({ isOpen, onClose, clients, onAdd, reservationData 
         if (newReservationData.status === 'in_progress') {
           try {
             await apiService.createTransaction({ reservation_ref_no: referenceNumber });
-            toast.success('Transaction created for new reservation');
           } catch (err) {
             if (err?.response?.data?.message?.includes('Duplicate entry')) {
               // Transaction already exists, do nothing
@@ -1192,7 +1159,33 @@ const AddReservationModal = ({ isOpen, onClose, clients, onAdd, reservationData 
             }
           }
         }
-        toast.success('Reservation submitted successfully');
+        
+        // Send email notification after successful submission
+        try {
+          await apiService.sendRequestCreationEmail({
+            reference_number: referenceNumber
+          });
+          console.log('Email notification sent successfully');
+        } catch (emailError) {
+          console.log('Email notification failed:', emailError);
+          // Don't fail the entire request if email fails
+        }
+        
+        toast.success('Request received successfully', {
+          duration: 4000,
+          position: 'top-center',
+          style: {
+            background: '#059669',
+            color: '#fff',
+            padding: '16px',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontWeight: '600',
+            minWidth: '300px',
+            textAlign: 'center',
+            boxShadow: '0 4px 12px rgba(5, 150, 105, 0.3)'
+          }
+        });
       }
 
       resetForm();
@@ -1226,6 +1219,38 @@ const AddReservationModal = ({ isOpen, onClose, clients, onAdd, reservationData 
 
   return (
     <>
+      {/* Loading Screen Overlay */}
+      {isSubmitting && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100]">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 text-center">
+            <div className="mb-6">
+              <svg className="animate-spin h-16 w-16 text-[#2a9dab] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">
+              {isEditMode ? 'Updating Request' : 'Submitting Request'}
+            </h3>
+            <p className="text-gray-600 mb-4">Please wait while we process your request...</p>
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="bg-[#2a9dab] h-2 rounded-full animate-pulse" style={{
+                width: '60%',
+                animation: 'progressBar 2s ease-in-out infinite'
+              }}></div>
+            </div>
+            <style jsx>{`
+              @keyframes progressBar {
+                0% { width: 0%; }
+                50% { width: 60%; }
+                100% { width: 0%; }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
+
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <ConfirmCancelModal
         isOpen={isCancelConfirmOpen}
         onClose={() => setIsCancelConfirmOpen(false)}
@@ -1242,7 +1267,6 @@ const AddReservationModal = ({ isOpen, onClose, clients, onAdd, reservationData 
         onConfirm={handleSubmit}
         isLoading={isSubmitting}
       />
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-7xl max-h-[90vh] font-sans flex flex-col justify-center border border-gray-200">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-800 whitespace-nowrap">{isEditMode ? 'Edit Request' : 'Add New Request'}</h2>
@@ -1567,7 +1591,7 @@ const AddReservationModal = ({ isOpen, onClose, clients, onAdd, reservationData 
               Total Fee: <span className="text-2xl font-bold text-[#2a9dab]">₱ {totalPrice.toLocaleString()}</span>
             </div>
             <div className="flex gap-4">
-              <button onClick={handleAttemptClose} className="px-4 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>
+              <button onClick={handleAttemptClose} className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold">Cancel</button>
               <button
                 onClick={isEditMode ? () => setIsEditConfirmOpen(true) : () => setIsSubmitConfirmOpen(true)}
                 disabled={isSubmitting}
@@ -1620,7 +1644,7 @@ const getStatusText = (status) => {
   }
 };
 
-const ViewReservationModal = ({ isOpen, onClose, reservation, onEdit, onAccept, user }) => {
+const ViewReservationModal = ({ isOpen, onClose, reservation, onEdit, onAccept, user, onPrintCertificate }) => {
   const [details, setDetails] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1731,7 +1755,7 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onEdit, onAccept, 
                 <div className="space-y-3">
                   {details.sample && details.sample.length > 0 ? (
                     details.sample.map(item => (
-                      <div key={item.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 grid grid-cols-4 gap-4 items-center">
+                      <div key={item.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 grid grid-cols-5 gap-4 items-center">
                         <div className="col-span-2">
                           <p className="font-semibold text-gray-800">{item.type} ({item.range})</p>
                           <p className="text-xs text-gray-500">Section: {item.section}</p>
@@ -1741,6 +1765,15 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onEdit, onAccept, 
                         <span className={`capitalize px-2 py-1 text-xs font-semibold text-white rounded-full ${getStatusBadge(item.status)} justify-self-end`}>
                           {getStatusText(item.status)}
                         </span>
+                        <div className="flex justify-end">
+                          {item.status === 'completed' && (
+                            <button 
+                              onClick={() => onPrintCertificate(item)}
+                              className="px-2 py-1 rounded text-xs font-semibold focus:outline-none transition-colors duration-200 border bg-green-600/20 text-green-600 border-green-600/30 hover:bg-green-600/30">
+                              Print Certificate
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))
                   ) : (
@@ -1871,6 +1904,10 @@ const Reservations = () => {
   // Confirmation dialog states
   const [showAcceptConfirm, setShowAcceptConfirm] = useState(false);
   const [selectedReservationId, setSelectedReservationId] = useState(null);
+  
+  // Print Certificate confirmation states
+  const [showPrintCertConfirm, setShowPrintCertConfirm] = useState(false);
+  const [certificateToPrint, setCertificateToPrint] = useState(null);
 
   const fetchReservations = async () => {
     setIsTableAnimating(true);
@@ -1928,19 +1965,124 @@ const Reservations = () => {
     setShowAcceptConfirm(true);
   };
 
+  const handlePrintCertificate = (item) => {
+    setCertificateToPrint(item);
+    setShowPrintCertConfirm(true);
+  };
+
+  const confirmPrintCertificate = () => {
+    if (!certificateToPrint) return;
+    
+    // Generate certificate URL based on calibration type
+    let certUrl = '';
+    const calibrationType = certificateToPrint.section.toLowerCase();
+    
+    // Debug logging
+    console.log('Certificate to print:', certificateToPrint);
+    console.log('Calibration type (section):', calibrationType);
+    
+    // Check more specific types first to avoid conflicts
+    if (calibrationType.includes('test') && calibrationType.includes('weight')) {
+      certUrl = `http://localhost:8000/api/calibration/generate_certificate_testweights.php?sample_id=${certificateToPrint.id}`;
+      console.log('Using test weights certificate');
+    } else if (calibrationType.includes('thermohygrometer')) {
+      certUrl = `http://localhost:8000/api/calibration/generate_certificate.php?sample_id=${certificateToPrint.id}`;
+      console.log('Using thermohygrometer certificate');
+    } else if (calibrationType.includes('sphygmomanometer')) {
+      certUrl = `http://localhost:8000/api/calibration/generate_certificate_sphygmomanometer.php?sample_id=${certificateToPrint.id}`;
+      console.log('Using sphygmomanometer certificate');
+    } else if (calibrationType.includes('weighing') || calibrationType.includes('scale')) {
+      certUrl = `http://localhost:8000/api/calibration/generate_certificate_weighing_scale.php?sample_id=${certificateToPrint.id}`;
+      console.log('Using weighing scale certificate');
+    } else if (calibrationType.includes('thermometer')) {
+      certUrl = `http://localhost:8000/api/calibration/generate_certificate_thermometer.php?sample_id=${certificateToPrint.id}`;
+      console.log('Using thermometer certificate');
+    } else {
+      certUrl = `http://localhost:8000/api/calibration/generate_certificate.php?sample_id=${certificateToPrint.id}`;
+      console.log('Using default certificate');
+    }
+    
+    console.log('Final certificate URL:', certUrl);
+    
+    // Try multiple methods to open the certificate
+    try {
+      const newWindow = window.open(certUrl, '_blank');
+      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        const link = document.createElement('a');
+        link.href = certUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch (error) {
+      console.error('Error opening certificate:', error);
+      alert('Unable to open certificate. Please check your browser settings and try again.');
+    }
+    
+    setShowPrintCertConfirm(false);
+    setCertificateToPrint(null);
+  };
+
   const confirmAcceptReservation = async () => {
     console.log('confirmAcceptReservation called with selectedReservationId:', selectedReservationId);
+    console.log('selectedReservationId type:', typeof selectedReservationId);
+    console.log('Current reservations before update:', reservations);
     try {
       console.log('Making API call to updateRequestStatus...');
-      await apiService.updateRequestStatus({ id: selectedReservationId, status: 'in_progress' });
-      console.log('API call successful');
-      toast.success('Reservation accepted!');
+      const requestData = { id: selectedReservationId, status: 'in_progress' };
+      console.log('Request data being sent:', requestData);
+      const response = await apiService.updateRequestStatus(requestData);
+      console.log('API call successful, response:', response);
+      
+      // Update local state immediately for better UX
+      setReservations(prevReservations => {
+        console.log('Previous reservations:', prevReservations);
+        console.log('Looking for reservation with ID:', selectedReservationId);
+        const updated = prevReservations.map(reservation => {
+          console.log('Checking reservation ID:', reservation.id, 'Type:', typeof reservation.id);
+          console.log('Matches?', reservation.id === selectedReservationId);
+          return reservation.id === selectedReservationId 
+            ? { ...reservation, status: 'in_progress' }
+            : reservation;
+        });
+        console.log('Updated reservations:', updated);
+        return updated;
+      });
+      
+      // Switch to "Ongoing" tab to show the accepted request
+      setStatusFilter('in_progress');
+      setSearchParams({ tab: 'in_progress' });
+      
+      toast.success('Reservation accepted! Moving to Ongoing tab...', {
+        duration: 4000,
+        position: 'top-center',
+        style: {
+          background: '#10B981',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+          fontSize: '16px',
+        },
+      });
+      
       // Create transaction after acceptance
       const reservation = reservations.find(r => r.id === selectedReservationId);
       if (reservation) {
         try {
           await apiService.createTransaction({ reservation_ref_no: reservation.reference_number });
-          toast.success('Transaction created for accepted reservation');
+          toast.success('Transaction created successfully', {
+            duration: 3000,
+            position: 'top-center',
+            style: {
+              background: '#059669',
+              color: '#fff',
+              padding: '12px',
+              borderRadius: '8px',
+              fontSize: '14px',
+            },
+          });
         } catch (err) {
           // If duplicate, ignore; otherwise, show error
           if (err?.response?.data?.message?.includes('Duplicate entry')) {
@@ -1950,11 +2092,27 @@ const Reservations = () => {
           }
         }
       }
-      fetchReservations();
+      
+      // Refresh from server to ensure consistency
+      setTimeout(() => {
+        fetchReservations();
+      }, 1000);
+      
       window.dispatchEvent(new Event('reservation-updated'));
     } catch (error) {
       console.error('Error in confirmAcceptReservation:', error);
-      toast.error('Failed to accept reservation.');
+      console.error('Error details:', error.response?.data);
+      toast.error('Failed to accept reservation. Please try again.', {
+        duration: 4000,
+        position: 'top-center',
+        style: {
+          background: '#EF4444',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+          fontSize: '16px',
+        },
+      });
     } finally {
       setShowAcceptConfirm(false);
       setSelectedReservationId(null);
@@ -2146,13 +2304,10 @@ const Reservations = () => {
     
     console.log('Prepared clientInfo:', clientInfo);
     setEditableClientInfo(clientInfo);
-    console.log('About to open ClientInfoModal, current isClientInfoModalOpen:', isClientInfoModalOpen);
     setIsClientInfoModalOpen(true);
-    console.log('Client info modal should now be open');
   };
 
   const handleClientInfoChange = (field, value) => {
-    console.log('handleClientInfoChange called - field:', field, 'value:', value);
     setEditableClientInfo(prev => {
       let newInfo = {
         ...prev,
@@ -2167,7 +2322,6 @@ const Reservations = () => {
         newInfo.barangay = '';
       }
       
-      console.log('Updated editableClientInfo:', newInfo);
       return newInfo;
     });
   };
@@ -2219,6 +2373,7 @@ const Reservations = () => {
       return;
     }
 
+    setIsSubmittingAttach(true);
     const formData = new FormData();
     const status = user?.role !== 'client' ? 'in_progress' : 'pending';
 
@@ -2292,14 +2447,12 @@ const Reservations = () => {
     try {
       const resp = await apiService.createRequestWithAttachment({ formData });
       console.log('Request creation response:', resp.data);
-      toast.success('Reservation submitted successfully');
       
       // If in_progress, create transaction
       if (status === 'in_progress' && resp.data.reference_number) {
         try {
           console.log('Creating transaction for reference:', resp.data.reference_number);
           await apiService.createTransaction({ reservation_ref_no: resp.data.reference_number });
-          toast.success('Transaction created for new reservation');
         } catch (err) {
           console.error('Transaction creation error:', err.response?.data);
           if (!err?.response?.data?.message?.includes('Duplicate entry')) {
@@ -2309,6 +2462,34 @@ const Reservations = () => {
       } else if (status === 'in_progress') {
         console.warn('No reference number returned from request creation, skipping transaction creation');
       }
+      
+      // Send email notification after successful submission
+      try {
+        await apiService.sendRequestCreationEmail({
+          reference_number: resp.data.reference_number
+        });
+        console.log('Email notification sent successfully');
+      } catch (emailError) {
+        console.log('Email notification failed:', emailError);
+        // Don't fail the entire request if email fails
+      }
+      
+      // Show success notification after everything is complete
+      toast.success('Request received successfully', {
+        duration: 4000,
+        position: 'top-center',
+        style: {
+          background: '#059669',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+          fontSize: '16px',
+          fontWeight: '600',
+          minWidth: '300px',
+          textAlign: 'center',
+          boxShadow: '0 4px 12px rgba(5, 150, 105, 0.3)'
+        }
+      });
       
       // Reset local state
       setAttachedFile(null);
@@ -2327,6 +2508,8 @@ const Reservations = () => {
       } else {
         toast.error('Failed to submit reservation with attachment: ' + (error.response?.data?.message || 'Unknown error'));
       }
+    } finally {
+      setIsSubmittingAttach(false);
     }
   };
 
@@ -2366,18 +2549,45 @@ const Reservations = () => {
         setIsSubmittingAttach(true);
         try {
           const resp = await apiService.createRequestWithAttachment({ formData });
-          toast.success('Reservation submitted successfully');
           // If in_progress, create transaction
           if (status === 'in_progress') {
             try {
               await apiService.createTransaction({ reservation_ref_no: resp.data.reference_number });
-              toast.success('Transaction created for new reservation');
             } catch (err) {
               if (!err?.response?.data?.message?.includes('Duplicate entry')) {
                 toast.error('Transaction creation failed');
               }
             }
           }
+          
+          // Send email notification after successful submission
+          try {
+            await apiService.sendRequestCreationEmail({
+              reference_number: resp.data.reference_number
+            });
+            console.log('Email notification sent successfully');
+          } catch (emailError) {
+            console.log('Email notification failed:', emailError);
+            // Don't fail the entire request if email fails
+          }
+          
+          // Show success notification after everything is complete
+          toast.success('Request received successfully', {
+            duration: 4000,
+            position: 'top-center',
+            style: {
+              background: '#059669',
+              color: '#fff',
+              padding: '16px',
+              borderRadius: '8px',
+              fontSize: '16px',
+              fontWeight: '600',
+              minWidth: '300px',
+              textAlign: 'center',
+              boxShadow: '0 4px 12px rgba(5, 150, 105, 0.3)'
+            }
+          });
+          
           // Reset local state
           setAttachedFile(null);
           setAttachedSampleDetails(null);
@@ -2422,14 +2632,41 @@ const Reservations = () => {
               if (status === 'in_progress') {
                 try {
                   await apiService.createTransaction({ reservation_ref_no: referenceNumber });
-                  toast.success('Transaction created for new reservation');
                 } catch (err2) {
                   if (!err2?.response?.data?.message?.includes('Duplicate entry')) {
                     toast.error('Transaction creation failed');
                   }
                 }
               }
-              toast.success('Reservation submitted (without file upload)');
+              
+              // Send email notification after successful submission
+              try {
+                await apiService.sendRequestCreationEmail({
+                  reference_number: referenceNumber
+                });
+                console.log('Email notification sent successfully');
+              } catch (emailError) {
+                console.log('Email notification failed:', emailError);
+                // Don't fail the entire request if email fails
+              }
+              
+              // Show success notification after everything is complete
+              toast.success('Request received successfully', {
+                duration: 4000,
+                position: 'top-center',
+                style: {
+                  background: '#059669',
+                  color: '#fff',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  minWidth: '300px',
+                  textAlign: 'center',
+                  boxShadow: '0 4px 12px rgba(5, 150, 105, 0.3)'
+                }
+              });
+              
               setAttachedFile(null);
               setAttachedSampleDetails(null);
               setFilePreviewUrl(null);
@@ -2458,6 +2695,35 @@ const Reservations = () => {
 
   return (
     <div className="p-6 bg-gray-100 h-full">
+      {/* Loading Screen Overlay for Attachment Submission */}
+      {isSubmittingAttach && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100]">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 text-center">
+            <div className="mb-6">
+              <svg className="animate-spin h-16 w-16 text-[#2a9dab] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Processing Attachment</h3>
+            <p className="text-gray-600 mb-4">Please wait while we process your attached file...</p>
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="bg-[#2a9dab] h-2 rounded-full animate-pulse" style={{
+                width: '70%',
+                animation: 'progressBar 2s ease-in-out infinite'
+              }}></div>
+            </div>
+            <style jsx>{`
+              @keyframes progressBar {
+                0% { width: 0%; }
+                50% { width: 70%; }
+                100% { width: 0%; }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
+
       <main className="flex-1">
         <Toaster />
         {/* Hidden file input for Attach flow */}
@@ -2510,6 +2776,7 @@ const Reservations = () => {
           onEdit={handleOpenEditModal}
           onAccept={handleAcceptReservation}
           user={user}
+          onPrintCertificate={handlePrintCertificate}
         />
         <div className="bg-white p-8 rounded-lg shadow-md w-full">
           <div className="flex justify-between items-center mb-6">
@@ -2665,42 +2932,34 @@ const Reservations = () => {
       </main>
 
       {/* Accept Confirmation Dialog */}
-      {showAcceptConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <div className="flex items-center mb-4">
-              <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
-                <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-            </div>
-            <div className="text-center">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Accept Request</h3>
-              <p className="text-sm text-gray-500 mb-4">
-                Are you sure you want to accept this request? This will move it to "In Progress" status and create a transaction.
-              </p>
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowAcceptConfirm(false);
-                  setSelectedReservationId(null);
-                }}
-                className="px-4 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 font-medium rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmAcceptReservation}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
-              >
-                Accept
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmationModal
+        isOpen={showAcceptConfirm}
+        onClose={() => {
+          setShowAcceptConfirm(false);
+          setSelectedReservationId(null);
+        }}
+        onConfirm={confirmAcceptReservation}
+        title="Accept Request"
+        message="Are you sure you want to accept this request? This will move it to 'In Progress' status and create a transaction."
+        type="success"
+        confirmText="Accept"
+        cancelText="Cancel"
+      />
+
+      {/* Print Certificate Confirmation Dialog */}
+      <ConfirmationModal
+        isOpen={showPrintCertConfirm}
+        onClose={() => {
+          setShowPrintCertConfirm(false);
+          setCertificateToPrint(null);
+        }}
+        onConfirm={confirmPrintCertificate}
+        title="Print Certificate"
+        message={`Are you sure you want to print the certificate for "${certificateToPrint?.type}"?`}
+        type="info"
+        confirmText="Print"
+        cancelText="Cancel"
+      />
 
     </div>
   );

@@ -142,8 +142,9 @@ $input_data = json_decode($record['input_data'], true);
 $result_data = isset($record['result_data']) ? json_decode($record['result_data'], true) : [];
 
 // Fetch calibrator details
-$calibrator_name = 'MA. FERNANDA I BANDA'; // Default fallback
+$calibrator_name = ''; // Will be set from database
 $calibrator_title = 'Calibration Engineer';
+
 if ($record['calibrated_by']) {
     $calibrator_stmt = $db->prepare('SELECT first_name, last_name, role FROM users WHERE id = :id');
     $calibrator_stmt->bindParam(':id', $record['calibrated_by'], PDO::PARAM_INT);
@@ -152,6 +153,24 @@ if ($record['calibrated_by']) {
     
     if ($calibrator) {
         $calibrator_name = strtoupper($calibrator['first_name'] . ' ' . $calibrator['last_name']);
+        $calibrator_title = 'Calibration Engineer';
+    } else {
+        // If the assigned user doesn't exist, get any calibration engineer
+        $eng_stmt = $db->prepare('SELECT first_name, last_name, role FROM users WHERE role = "calibration_engineers" LIMIT 1');
+        $eng_stmt->execute();
+        $eng = $eng_stmt->fetch(PDO::FETCH_ASSOC);
+        if ($eng) {
+            $calibrator_name = strtoupper($eng['first_name'] . ' ' . $eng['last_name']);
+            $calibrator_title = 'Calibration Engineer';
+        }
+    }
+} else {
+    // If no calibrator assigned, get any calibration engineer
+    $eng_stmt = $db->prepare('SELECT first_name, last_name, role FROM users WHERE role = "calibration_engineers" LIMIT 1');
+    $eng_stmt->execute();
+    $eng = $eng_stmt->fetch(PDO::FETCH_ASSOC);
+    if ($eng) {
+        $calibrator_name = strtoupper($eng['first_name'] . ' ' . $eng['last_name']);
         $calibrator_title = 'Calibration Engineer';
     }
 }
@@ -252,7 +271,7 @@ $pdf->Cell(0, 10, 'CALIBRATION CERTIFICATE', 0, 1, 'C');
 $pdf->Ln(1);
 
 // Details section - Two column format
-$pdf->SetFont('Arial', '', 8); // Increased from 7 to 8 for better readability
+$pdf->SetFont('Arial', '', 7); // Reduced from 8 to 7 for better fit of longer text
 $leftX = 20; $topY = $pdf->GetY();
 $rightX = 120; // Start of right column - moved slightly right
 
@@ -271,9 +290,17 @@ $leftDetails = [
 ];
 
 // Right column details - using comprehensive data
+// Fix truncated type text
+$fixedType = $section;
+if (strpos($section, 'Calibration of Non-Automatic Weighing Instrum') !== false) {
+    $fixedType = 'Calibration of Non-Automatic Weighing Instruments';
+} elseif (empty($section) || $section === '') {
+    $fixedType = 'Calibration of Non-Automatic Weighing Instruments';
+}
+
 $rightDetails = [
     ['Particulars', $type],
-    ['Type', $section],
+    ['Type', $fixedType],
     ['Make', $make],
     ['Model', $model],
     ['Serial No.', $serial_no],
@@ -282,7 +309,7 @@ $rightDetails = [
 ];
 
 // Function to wrap text properly
-function wrapText($pdf, $x, $y, $width, $text, $lineHeight = 4) { // Increased from 3 to 4 for better readability
+function wrapText($pdf, $x, $y, $width, $text, $lineHeight = 3.5) { // Reduced from 4 to 3.5 for more compact layout
     // Clean the text first
     $text = trim($text);
     if (empty($text)) {
@@ -359,14 +386,14 @@ for ($i = 0; $i < count($leftDetails); $i++) {
     
     // Display left column label
     $pdf->SetXY($leftX, $currentY);
-    $pdf->Cell(30, 4, $leftRow[0] . ' :', 0, 0, 'L'); // Increased height from 3 to 4
+    $pdf->Cell(30, 3.5, $leftRow[0] . ' :', 0, 0, 'L'); // Reduced height from 4 to 3.5
     
     // Display left column value with compact text wrapping
     $leftHeight = wrapText($pdf, $leftX + 30, $currentY, 85, $leftRow[1]);
     
     // Display right column label
     $pdf->SetXY($rightX, $rowStartY);
-    $pdf->Cell(30, 4, $rightRow[0] . ' :', 0, 0, 'L'); // Increased height from 3 to 4
+    $pdf->Cell(30, 3.5, $rightRow[0] . ' :', 0, 0, 'L'); // Reduced height from 4 to 3.5
     
     // Display right column value with compact text wrapping
     $rightHeight = wrapText($pdf, $rightX + 30, $rowStartY, 85, $rightRow[1]);
@@ -885,8 +912,9 @@ $pdf->Ln(3);
 $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(0, 6, 'STANDARDS USED AND TRACEABILITY:', 0, 1, 'L');
 $pdf->SetFont('Arial', '', 10);
-$pdf->Cell(0, 5, '• Mettler Toledo (Class F1 set) 15981', 0, 1, 'L');
-$pdf->Cell(0, 5, '• Hafner (Class E2 set) 1131018', 0, 1, 'L');
+$pdf->Cell(0, 5, 'Troemner (Class M1) 10016516, 10016527, 10016529', 0, 1, 'L');
+$pdf->Cell(0, 5, '10016908, 10016580', 0, 1, 'L');
+$pdf->Cell(0, 5, 'Nutex (Class M1) MTR-001 to MTR-026', 0, 1, 'L');
 $pdf->Ln(3);
 
 // Calibration Procedure

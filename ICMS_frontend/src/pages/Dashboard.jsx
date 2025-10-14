@@ -40,7 +40,7 @@ const Dashboard = () => {
       setLoading(true);
       try {
         // Fetch transactions for payments
-        const res = await fetch('http://localhost/ICMS_DOST-%20PSTO/ICMS_backend/api/transaction/read.php');
+        const res = await fetch('http://localhost:8000/api/transaction/read.php');
         const data = await res.json();
         if (data && data.records) {
           let calibratedCount = 0;
@@ -80,7 +80,7 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchClients = async () => {
       try {
-        const res = await fetch('http://localhost/ICMS_DOST-%20PSTO/ICMS_backend/api/clients/get_clients.php');
+        const res = await fetch('http://localhost:8000/api/clients/get_clients.php');
         const data = await res.json();
         if (data && data.records) {
           setClients(data.records);
@@ -108,7 +108,8 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchRequests = async () => {
       try {
-        const res = await fetch('http://localhost/ICMS_DOST-%20PSTO/ICMS_backend/api/request/read.php');
+
+        const res = await fetch('http://localhost:8000/api/request/read.php');
         const data = await res.json();
         if (data && data.records) {
           const events = [];

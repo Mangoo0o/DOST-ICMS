@@ -24,49 +24,84 @@ $db = $database->getConnection();
     exit();
 }
 
+// Best-effort get acting user if available
+$auth_user = null;
+try {
+    require_once __DIR__ . '/../auth/verify_token.php';
+    $auth_user = verifyToken();
+} catch (Throwable $e) {
+    $auth_user = null;
+}
+
+// Helper to log generated reports (best-effort)
+function logReportGenerated($db, $userId, $reportType, $details) {
+    try {
+        $db->exec("CREATE TABLE IF NOT EXISTS system_logs (id INT AUTO_INCREMENT PRIMARY KEY, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, user_id INT NULL, action VARCHAR(255) NOT NULL, details TEXT NULL, ip_address VARCHAR(45) NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $stmt = $db->prepare("INSERT INTO system_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)");
+        $payload = json_encode(array_merge(['report_type' => (string)$reportType], (array)$details));
+        $stmt->execute([$userId, 'report_generate', $payload, null]);
+    } catch (Exception $ignore) {}
+}
+
 // Get report parameters from query parameters
 $report_type = isset($_GET['type']) ? $_GET['type'] : '';
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : null;
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : null;
 $location = isset($_GET['location']) ? $_GET['location'] : null;
+// Optional section toggles (default to include when not provided)
+$include_samples = isset($_GET['include_samples']) ? ($_GET['include_samples'] === '1' || $_GET['include_samples'] === 'true') : true;
+$include_clients_by_city = isset($_GET['include_clients_by_city']) ? ($_GET['include_clients_by_city'] === '1' || $_GET['include_clients_by_city'] === 'true') : true;
+$include_inventory = isset($_GET['include_inventory']) ? ($_GET['include_inventory'] === '1' || $_GET['include_inventory'] === 'true') : true;
 
 try {
     // Handle different report types
     switch ($report_type) {
         case 'all_reports':
             $result = generateAllReports($db, $start_date, $end_date, $location);
+            logReportGenerated($db, $auth_user->id ?? null, 'all_reports', ['start_date' => $start_date, 'end_date' => $end_date, 'location' => $location]);
             break;
         case 'calibration_summary':
             $result = generateCalibrationSummary($db, $start_date, $end_date, $location);
+            logReportGenerated($db, $auth_user->id ?? null, 'calibration_summary', ['start_date' => $start_date, 'end_date' => $end_date, 'location' => $location]);
             break;
         case 'financial_report':
             $result = generateFinancialReport($db, $start_date, $end_date, $location);
+            logReportGenerated($db, $auth_user->id ?? null, 'financial_report', ['start_date' => $start_date, 'end_date' => $end_date, 'location' => $location]);
             break;
         case 'inventory_report':
             $result = generateInventoryReport($db, $start_date, $end_date, $location);
+            logReportGenerated($db, $auth_user->id ?? null, 'inventory_report', ['start_date' => $start_date, 'end_date' => $end_date, 'location' => $location]);
             break;
         case 'client_activity':
             $result = generateClientActivityReport($db, $start_date, $end_date, $location);
+            logReportGenerated($db, $auth_user->id ?? null, 'client_activity', ['start_date' => $start_date, 'end_date' => $end_date, 'location' => $location]);
             break;
         case 'performance_metrics':
             $result = generatePerformanceMetrics($db, $start_date, $end_date, $location);
+            logReportGenerated($db, $auth_user->id ?? null, 'performance_metrics', ['start_date' => $start_date, 'end_date' => $end_date, 'location' => $location]);
             break;
         case 'all_requests':
             $result = generateAllRequestsReport($db, $start_date, $end_date, $location);
+            logReportGenerated($db, $auth_user->id ?? null, 'all_requests', ['start_date' => $start_date, 'end_date' => $end_date, 'location' => $location]);
             break;
         case 'pdf_report':
-            generatePDFPreview($db, $start_date, $end_date, $location);
+            logReportGenerated($db, $auth_user->id ?? null, 'pdf_report', ['start_date' => $start_date, 'end_date' => $end_date, 'location' => $location, 'include_samples' => $include_samples, 'include_clients_by_city' => $include_clients_by_city, 'include_inventory' => $include_inventory, 'mode' => 'preview']);
+            generatePDFPreview($db, $start_date, $end_date, $location, $include_samples, $include_clients_by_city, $include_inventory);
             exit(); // PDF generation will output directly
         case 'test_pdf':
+            logReportGenerated($db, $auth_user->id ?? null, 'test_pdf', []);
             generateTestPDFPreview();
             exit(); // PDF generation will output directly
         case 'all_requests_test':
+            logReportGenerated($db, $auth_user->id ?? null, 'all_requests_test', []);
             generateAllRequestsTest($db);
             exit(); // Test will output directly
         case 'db_test':
+            logReportGenerated($db, $auth_user->id ?? null, 'db_test', []);
             generateDBTest($db);
             exit(); // Test will output directly
         case 'debug_test':
+            logReportGenerated($db, $auth_user->id ?? null, 'debug_test', []);
             generateDebugTest($db);
             exit(); // Debug test will output directly
         default:
@@ -139,73 +174,115 @@ function generateAllReports($db, $start_date, $end_date, $location) {
 }
 
 function generateDashboardSummary($db, $start_date, $end_date, $location) {
-    $whereClause = buildDateFilter($start_date, $end_date);
-    $locationFilter = $location && $location !== 'all' ? " AND r.address LIKE :location" : "";
-    
-    // Get total requests
-    $query = "SELECT COUNT(*) as total_requests FROM requests r WHERE 1=1 $whereClause $locationFilter";
-    $stmt = $db->prepare($query);
-    bindDateParams($stmt, $start_date, $end_date);
-    if ($location && $location !== 'all') {
-        $stmt->bindParam(':location', $location);
+    // Build per-table date filters to ensure correct metrics by selected date range
+    // 1) Requests by r.date_created
+    $reqWhere = "";
+    if ($start_date && $end_date) {
+        $reqWhere = " AND DATE(r.date_created) BETWEEN :start_date AND :end_date";
+    } elseif ($start_date) {
+        $reqWhere = " AND DATE(r.date_created) >= :start_date";
+    } elseif ($end_date) {
+        $reqWhere = " AND DATE(r.date_created) <= :end_date";
     }
-    $stmt->execute();
-    $totalRequests = $stmt->fetch(PDO::FETCH_ASSOC)['total_requests'];
-    
-    // Get calibrated items count
-    $query = "SELECT COUNT(*) as calibrated_items FROM calibration_records cr 
-              JOIN sample s ON cr.sample_id = s.id 
-              WHERE cr.date_completed IS NOT NULL $whereClause";
+    $locFilter = $location && $location !== 'all' ? " AND r.address LIKE :location" : "";
+    $likeLocation = ($location && $location !== 'all') ? ("%" . $location . "%") : null;
+
+    // Total requests
+    $query = "SELECT COUNT(*) AS total_requests FROM requests r WHERE 1=1 $reqWhere $locFilter";
     $stmt = $db->prepare($query);
-    bindDateParams($stmt, $start_date, $end_date);
+    if ($start_date) { $stmt->bindParam(':start_date', $start_date); }
+    if ($end_date)   { $stmt->bindParam(':end_date', $end_date); }
+    if ($location && $location !== 'all') { $stmt->bindParam(':location', $likeLocation); }
     $stmt->execute();
-    $calibratedItems = $stmt->fetch(PDO::FETCH_ASSOC)['calibrated_items'];
-    
-    // Get completed requests
-    $query = "SELECT COUNT(*) as completed_requests FROM requests r 
-              WHERE r.status = 'completed' $whereClause $locationFilter";
-    $stmt = $db->prepare($query);
-    bindDateParams($stmt, $start_date, $end_date);
-    if ($location && $location !== 'all') {
-        $stmt->bindParam(':location', $location);
-    }
-    $stmt->execute();
-    $completedRequests = $stmt->fetch(PDO::FETCH_ASSOC)['completed_requests'];
-    
-    // Get total clients
-    $query = "SELECT COUNT(DISTINCT client_id) as total_clients FROM requests r 
-              WHERE 1=1 $whereClause $locationFilter";
-    $stmt = $db->prepare($query);
-    bindDateParams($stmt, $start_date, $end_date);
-    if ($location && $location !== 'all') {
-        $stmt->bindParam(':location', $location);
-    }
-    $stmt->execute();
-    $totalClients = $stmt->fetch(PDO::FETCH_ASSOC)['total_clients'];
-    
-    // Get total revenue (check if transactions table exists)
-    $totalRevenue = 0;
-    try {
-        $query = "SELECT COALESCE(SUM(p.amount), 0) as total_revenue FROM payments p 
-                  JOIN transactions t ON p.transaction_id = t.id 
-                  WHERE 1=1 $whereClause";
-        $stmt = $db->prepare($query);
-        bindDateParams($stmt, $start_date, $end_date);
+    $totalRequests = (int)$stmt->fetch(PDO::FETCH_ASSOC)['total_requests'];
+    // Fallback: use full timestamp range if DATE() filtering returns 0
+    if ($totalRequests === 0 && ($start_date || $end_date)) {
+        $startDt = $start_date ? ($start_date . ' 00:00:00') : null;
+        $endDtExclusive = $end_date ? date('Y-m-d H:i:s', strtotime($end_date . ' +1 day')) : null;
+        $tsWhere = '';
+        if ($startDt && $endDtExclusive) {
+            $tsWhere = ' AND r.date_created >= :start_dt AND r.date_created < :end_dt';
+        } elseif ($startDt) {
+            $tsWhere = ' AND r.date_created >= :start_dt';
+        } elseif ($endDtExclusive) {
+            $tsWhere = ' AND r.date_created < :end_dt';
+        }
+        $fallbackSql = "SELECT COUNT(*) AS total_requests FROM requests r WHERE 1=1 $tsWhere $locFilter";
+        $stmt = $db->prepare($fallbackSql);
+        if ($startDt) { $stmt->bindParam(':start_dt', $startDt); }
+        if ($endDtExclusive) { $stmt->bindParam(':end_dt', $endDtExclusive); }
+        if ($location && $location !== 'all') { $stmt->bindParam(':location', $likeLocation); }
         $stmt->execute();
-        $totalRevenue = $stmt->fetch(PDO::FETCH_ASSOC)['total_revenue'];
-    } catch (Exception $e) {
-        // Transactions table doesn't exist, revenue is 0
-        $totalRevenue = 0;
+        $totalRequests = (int)$stmt->fetch(PDO::FETCH_ASSOC)['total_requests'];
     }
-    
+    error_log('DashboardSummary - totalRequests: ' . $totalRequests . ' start=' . $start_date . ' end=' . $end_date . ' loc=' . ($location ?? 'null'));
+
+    // 2) Total Calibrated Items: count completed items in sample table within request date range
+    $query = "SELECT COUNT(s.id) AS calibrated_items
+              FROM sample s
+              JOIN requests r ON r.reference_number = s.reservation_ref_no
+              WHERE s.status = 'completed' $reqWhere $locFilter";
+    $stmt = $db->prepare($query);
+    if ($start_date) { $stmt->bindParam(':start_date', $start_date); }
+    if ($end_date)   { $stmt->bindParam(':end_date', $end_date); }
+    if ($location && $location !== 'all') { $stmt->bindParam(':location', $likeLocation); }
+    $stmt->execute();
+    $calibratedItems = (int)$stmt->fetch(PDO::FETCH_ASSOC)['calibrated_items'];
+
+    // 3) Total revenue by selected date with schema fallbacks
+    $totalRevenue = 0.0;
+    try {
+        // Prefer new schema (transactions + payments)
+        $revDate = [];
+        if ($start_date) { $revDate[] = "DATE(t.created_at) >= :start_date"; }
+        if ($end_date)   { $revDate[] = "DATE(t.created_at) <= :end_date"; }
+        $revWhere = empty($revDate) ? "" : (" AND " . implode(" AND ", $revDate));
+        $query = "SELECT COALESCE(SUM(p.amount), 0) AS total_revenue
+                  FROM transactions t
+                  LEFT JOIN payments p ON t.id = p.transaction_id
+                  WHERE 1=1 $revWhere";
+        $stmt = $db->prepare($query);
+        if ($start_date) { $stmt->bindParam(':start_date', $start_date); }
+        if ($end_date)   { $stmt->bindParam(':end_date', $end_date); }
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $totalRevenue = $row ? (float)$row['total_revenue'] : 0.0;
+    } catch (Exception $e) {
+        // Legacy single `transaction` table storing payments JSON; use created/updated timestamp
+        try {
+            $revDate = [];
+            if ($start_date) { $revDate[] = "DATE(t.updated_at) >= :start_date"; }
+            if ($end_date)   { $revDate[] = "DATE(t.updated_at) <= :end_date"; }
+            $revWhere = empty($revDate) ? "" : (" AND " . implode(" AND ", $revDate));
+            $query = "SELECT COALESCE(SUM(t.amount), 0) AS total_revenue
+                      FROM `transaction` t
+                      WHERE t.status = 'paid' $revWhere";
+            $stmt = $db->prepare($query);
+            if ($start_date) { $stmt->bindParam(':start_date', $start_date); }
+            if ($end_date)   { $stmt->bindParam(':end_date', $end_date); }
+            $stmt->execute();
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $totalRevenue = $row ? (float)$row['total_revenue'] : 0.0;
+        } catch (Exception $e2) {
+            $totalRevenue = 0.0;
+        }
+    }
+
+    // Total clients from clients table (no date filter as requested)
+    $query = "SELECT COUNT(*) AS total_clients FROM clients";
+    $stmt = $db->prepare($query);
+    $stmt->execute();
+    $clientsRow = $stmt->fetch(PDO::FETCH_ASSOC);
+    $totalClients = $clientsRow ? (int)$clientsRow['total_clients'] : 0;
+
     return [[
-        'total_requests' => (int)$totalRequests,
-        'total_calibrated_items' => (int)$calibratedItems,
-        'completed_requests' => (int)$completedRequests,
-        'in_progress_requests' => (int)$totalRequests - (int)$completedRequests,
-        'pending_requests' => 0, // Calculate based on status
-        'total_revenue' => (float)$totalRevenue,
-        'total_clients' => (int)$totalClients
+        'total_requests' => $totalRequests,
+        'total_calibrated_items' => $calibratedItems,
+        'completed_requests' => 0,
+        'in_progress_requests' => max(0, $totalRequests),
+        'pending_requests' => 0,
+        'total_revenue' => $totalRevenue,
+        'total_clients' => $totalClients
     ]];
 }
 
@@ -220,7 +297,7 @@ function generateCalibrationSummary($db, $start_date, $end_date, $location) {
                 COUNT(cr.id) as calibrated_items,
                 COUNT(CASE WHEN r.status = 'completed' THEN 1 END) as completed_samples
               FROM requests r
-              LEFT JOIN sample s ON r.id = s.request_id
+              LEFT JOIN sample s ON r.reference_number = s.reservation_ref_no
               LEFT JOIN calibration_records cr ON s.id = cr.sample_id AND cr.date_completed IS NOT NULL
               WHERE 1=1 $whereClause $locationFilter
               GROUP BY DATE(r.date_created)
@@ -233,6 +310,46 @@ function generateCalibrationSummary($db, $start_date, $end_date, $location) {
     }
     $stmt->execute();
     
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function generateRequestSamplesReport($db, $start_date, $end_date, $location) {
+    // Filter requests by date_created and optional location
+    $reqWhere = "";
+    if ($start_date && $end_date) {
+        $reqWhere = " AND DATE(r.date_created) BETWEEN :start_date AND :end_date";
+    } elseif ($start_date) {
+        $reqWhere = " AND DATE(r.date_created) >= :start_date";
+    } elseif ($end_date) {
+        $reqWhere = " AND DATE(r.date_created) <= :end_date";
+    }
+    $locationFilter = $location && $location !== 'all' ? " AND r.address LIKE :location" : "";
+    $likeLocation = ($location && $location !== 'all') ? ("%" . $location . "%") : null;
+
+    $query = "SELECT 
+                r.id AS request_id,
+                s.reservation_ref_no AS reservation_ref_no,
+                r.date_created,
+                s.status AS sample_status,
+                r.address,
+                c.company,
+                s.id AS sample_id,
+                s.type AS sample_type,
+                cr.date_started,
+                cr.date_completed
+              FROM requests r
+              LEFT JOIN clients c ON r.client_id = c.id
+              LEFT JOIN sample s ON r.reference_number = s.reservation_ref_no
+              LEFT JOIN calibration_records cr ON s.id = cr.sample_id
+              WHERE 1=1 $reqWhere $locationFilter
+              ORDER BY r.date_created DESC, r.id DESC";
+
+    $stmt = $db->prepare($query);
+    bindDateParams($stmt, $start_date, $end_date);
+    if ($location && $location !== 'all') {
+        $stmt->bindParam(':location', $likeLocation);
+    }
+    $stmt->execute();
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -279,7 +396,7 @@ function generateInventoryReport($db, $start_date, $end_date, $location) {
                 s.status,
                 CASE WHEN cr.date_completed IS NOT NULL THEN 1 ELSE 0 END as is_calibrated,
                 cr.date_completed as last_calibration_date,
-                c.company_name as client_name
+                c.company as client_name
               FROM sample s
               LEFT JOIN calibration_records cr ON s.id = cr.sample_id AND cr.date_completed IS NOT NULL
               LEFT JOIN requests r ON s.request_id = r.id
@@ -298,7 +415,7 @@ function generateClientActivityReport($db, $start_date, $end_date, $location) {
     
     $query = "SELECT 
                 c.id as client_id,
-                c.company_name,
+                c.company,
                 c.contact_person,
                 c.email,
                 COUNT(r.id) as total_requests,
@@ -310,7 +427,7 @@ function generateClientActivityReport($db, $start_date, $end_date, $location) {
               LEFT JOIN requests r ON c.id = r.client_id $whereClause $locationFilter
               LEFT JOIN sample s ON r.id = s.request_id
               LEFT JOIN calibration_records cr ON s.id = cr.sample_id AND cr.date_completed IS NOT NULL
-              GROUP BY c.id, c.company_name, c.contact_person, c.email
+              GROUP BY c.id, c.company, c.contact_person, c.email
               ORDER BY total_requests DESC";
     
     $stmt = $db->prepare($query);
@@ -320,6 +437,20 @@ function generateClientActivityReport($db, $start_date, $end_date, $location) {
     }
     $stmt->execute();
     
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function generateInventoryList($db) {
+    $query = "SELECT name, category, status, sticker FROM inventory_items ORDER BY name ASC";
+    $stmt = $db->prepare($query);
+    $stmt->execute();
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function generateClientsByCity($db) {
+    $query = "SELECT city, COUNT(*) AS total_clients FROM clients GROUP BY city ORDER BY total_clients DESC, city ASC";
+    $stmt = $db->prepare($query);
+    $stmt->execute();
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -362,22 +493,29 @@ function buildDateFilter($start_date, $end_date) {
 }
 
 function generateAllRequestsReport($db, $start_date, $end_date, $location) {
-    // Build date filter with debugging
-    $whereClause = buildDateFilter($start_date, $end_date);
+    // Build date filter specifically for requests table (alias r)
+    $reqWhere = "";
+    if ($start_date && $end_date) {
+        $reqWhere = " AND DATE(r.date_created) BETWEEN :start_date AND :end_date";
+    } elseif ($start_date) {
+        $reqWhere = " AND DATE(r.date_created) >= :start_date";
+    } elseif ($end_date) {
+        $reqWhere = " AND DATE(r.date_created) <= :end_date";
+    }
     $locationFilter = $location && $location !== 'all' ? " AND r.address LIKE :location" : "";
+    $likeLocation = ($location && $location !== 'all') ? ("%" . $location . "%") : null;
     
     // Log the query for debugging
     error_log("All Requests Query - Start Date: $start_date, End Date: $end_date, Location: $location");
-    error_log("Where Clause: $whereClause");
+    error_log("Where Clause: $reqWhere");
     
     $query = "SELECT 
                 r.id as request_id,
-                r.reference_no,
                 r.date_created,
                 r.date_submitted,
                 r.status,
                 r.address,
-                c.company_name,
+                c.company,
                 c.contact_person,
                 c.email,
                 c.phone,
@@ -389,9 +527,9 @@ function generateAllRequestsReport($db, $start_date, $end_date, $location) {
               LEFT JOIN clients c ON r.client_id = c.id
               LEFT JOIN sample s ON r.id = s.request_id
               LEFT JOIN calibration_records cr ON s.id = cr.sample_id
-              WHERE 1=1 $whereClause $locationFilter
-              GROUP BY r.id, r.reference_no, r.date_created, r.date_submitted, r.status, r.address, 
-                       c.company_name, c.contact_person, c.email, c.phone
+              WHERE 1=1 $reqWhere $locationFilter
+              GROUP BY r.id, r.date_created, r.date_submitted, r.status, r.address, 
+                       c.company, c.contact_person, c.email, c.phone
               ORDER BY r.date_created DESC";
     
     error_log("Full Query: $query");
@@ -399,13 +537,12 @@ function generateAllRequestsReport($db, $start_date, $end_date, $location) {
     $stmt = $db->prepare($query);
     bindDateParams($stmt, $start_date, $end_date);
     if ($location && $location !== 'all') {
-        $stmt->bindParam(':location', $location);
+        $stmt->bindParam(':location', $likeLocation);
     }
     $stmt->execute();
     
     $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    error_log("All Requests Results Count: " . count($results));
-    
+    error_log("All Requests Results Count (DATE filter): " . count($results));
     return $results;
 }
 
@@ -449,9 +586,46 @@ function generatePDFReport($db, $start_date, $end_date, $location) {
     }
     
     // Create PDF
-    try {
-        $pdf = new FPDF('P', 'mm', 'A4');
-    } catch (Exception $e) {
+        try {
+            if (!class_exists('ReportPDF')) {
+                class ReportPDF extends FPDF {
+                    function Header() {
+                        $dost_logo_path = __DIR__ . '/../../assets/dost_logo.png';
+                        if (file_exists($dost_logo_path)) {
+                            $this->Image($dost_logo_path, 12, 12, 22);
+                        }
+
+
+                        $bagong_pilipinas_logo_path = __DIR__ . '/../../assets/bagong_pilipinas_logo.png';
+                        if (file_exists($bagong_pilipinas_logo_path)) {
+                            $this->Image($bagong_pilipinas_logo_path, 175, 12, 22);
+                        }
+
+                        $this->SetXY(40, 12);
+                        $this->SetFont('Arial', 'B', 11);
+                        $this->Cell(0, 6, 'Republic of the Philippines', 0, 1, 'L');
+                        $this->SetX(40);
+                        $this->SetFont('Arial', 'B', 12);
+                        $this->SetTextColor(0, 153, 204);
+                        $this->Cell(0, 6, 'DEPARTMENT OF SCIENCE AND TECHNOLOGY', 0, 1, 'L');
+                        $this->SetTextColor(0,0,0);
+                        $this->SetX(40);
+                        $this->SetFont('Arial', 'B', 11);
+                        $this->Cell(0, 6, 'Regional Office No. I', 0, 1, 'L');
+                        $this->SetX(40);
+                        $this->SetFont('Arial', '', 11);
+                        $this->Cell(0, 6, 'Regional Standards and Testing Laboratory', 0, 1, 'L');
+
+                        $lineY = 42;
+                        $this->SetY($lineY);
+                        $this->SetDrawColor(0,0,0);
+                        $this->Line(12, $lineY, 198, $lineY);
+                        $this->Ln(8);
+                    }
+                }
+            }
+            $pdf = new ReportPDF('P', 'mm', 'A4');
+        } catch (Exception $e) {
         error_log("FPDF creation error: " . $e->getMessage());
         throw new Exception("Failed to create PDF object: " . $e->getMessage());
     }
@@ -467,6 +641,23 @@ function generatePDFReport($db, $start_date, $end_date, $location) {
     $pdf->Cell(0, 8, 'Date Range: ' . $start_date . ' to ' . $end_date, 0, 1, 'L');
     $pdf->Cell(0, 8, 'Location: ' . ($location === 'all' ? 'All Locations' : $location), 0, 1, 'L');
     $pdf->Cell(0, 8, 'Generated on: ' . date('Y-m-d H:i:s'), 0, 1, 'L');
+        // 3-column summary table (always render)
+        $summary = isset($reports['dashboard_summary'][0]) ? $reports['dashboard_summary'][0] : [
+            'total_calibrated_items' => 0,
+            'total_requests' => 0,
+            'total_revenue' => 0
+        ];
+        $pdf->Ln(4);
+        $pdf->SetFont('Arial', 'B', 11);
+        $pdf->Cell(0, 8, 'SUMMARY', 0, 1, 'L');
+        $pdf->SetFont('Arial', 'B', 10);
+        $pdf->Cell(63, 8, 'Total Calibrated Items', 1, 0, 'C');
+        $pdf->Cell(63, 8, 'Total Requests', 1, 0, 'C');
+        $pdf->Cell(64, 8, 'Total Fees Collected', 1, 1, 'C');
+        $pdf->SetFont('Arial', '', 11);
+        $pdf->Cell(63, 10, number_format((int)$summary['total_calibrated_items']), 1, 0, 'C');
+        $pdf->Cell(63, 10, number_format((int)$summary['total_requests']), 1, 0, 'C');
+        $pdf->Cell(64, 10, number_format((float)$summary['total_revenue'], 2), 1, 1, 'C');
     $pdf->Ln(10);
     
     // Dashboard Summary
@@ -525,7 +716,7 @@ function generatePDFReport($db, $start_date, $end_date, $location) {
             $pdf->Cell(20, 8, substr($request['reference_no'], 0, 12), 1, 0, 'C');
             $pdf->Cell(25, 8, date('Y-m-d', strtotime($request['date_created'])), 1, 0, 'C');
             $pdf->Cell(15, 8, $request['status'], 1, 0, 'C');
-            $pdf->Cell(40, 8, substr($request['company_name'], 0, 20), 1, 0, 'C');
+            $pdf->Cell(40, 8, substr($request['company'], 0, 20), 1, 0, 'C');
             $pdf->Cell(30, 8, substr($request['contact_person'], 0, 15), 1, 0, 'C');
             $pdf->Cell(20, 8, $request['total_samples'], 1, 0, 'C');
             $pdf->Cell(20, 8, $request['calibrated_samples'], 1, 0, 'C');
@@ -616,7 +807,7 @@ function generateAllRequestsTest($db) {
                 r.date_submitted,
                 r.status,
                 r.address,
-                c.company_name,
+                c.company,
                 c.contact_person,
                 c.email,
                 c.phone,
@@ -629,7 +820,7 @@ function generateAllRequestsTest($db) {
               LEFT JOIN sample s ON r.id = s.request_id
               LEFT JOIN calibration_records cr ON s.id = cr.sample_id
               GROUP BY r.id, r.reference_no, r.date_created, r.date_submitted, r.status, r.address, 
-                       c.company_name, c.contact_person, c.email, c.phone
+                       c.company, c.contact_person, c.email, c.phone
               ORDER BY r.date_created DESC";
     
     error_log("All Requests Test Query: $query");
@@ -786,8 +977,8 @@ function generateTestPDFPreview() {
     }
 }
 
-function generatePDFPreview($db, $start_date, $end_date, $location) {
-    error_log("generatePDFPreview() called with params: start_date=$start_date, end_date=$end_date, location=$location");
+function generatePDFPreview($db, $start_date, $end_date, $location, $include_samples = true, $include_clients_by_city = true, $include_inventory = true) {
+    error_log("generatePDFPreview() called with params: start_date=$start_date, end_date=$end_date, location=$location, include_samples=" . ($include_samples ? '1' : '0') . ", include_clients_by_city=" . ($include_clients_by_city ? '1' : '0') . ", include_inventory=" . ($include_inventory ? '1' : '0'));
     
     try {
         require_once __DIR__ . '/../../vendor/setasign/fpdf/fpdf.php';
@@ -806,19 +997,16 @@ function generatePDFPreview($db, $start_date, $end_date, $location) {
             $reports['dashboard_summary'] = [];
         }
         
-        try {
-            error_log("PDF Generation - About to call generateAllRequestsTestData()");
-            // Use test function to get ALL requests without date filtering
-            $reports['all_requests'] = generateAllRequestsTestData($db);
-            error_log("PDF Generation - Function returned, count: " . count($reports['all_requests']));
-            error_log("PDF Generation - All requests count: " . count($reports['all_requests']));
-            if (!empty($reports['all_requests'])) {
-                error_log("PDF Generation - First request data: " . json_encode($reports['all_requests'][0]));
-            } else {
-                error_log("PDF Generation - All requests array is empty");
+        if ($include_samples) {
+            try {
+                error_log("PDF Generation - Using generateAllRequestsReport with filters");
+                $reports['all_requests'] = generateAllRequestsReport($db, $start_date, $end_date, $location);
+                error_log("PDF Generation - All requests (filtered) count: " . count($reports['all_requests']));
+            } catch (Exception $e) {
+                error_log("All requests error: " . $e->getMessage());
+                $reports['all_requests'] = [];
             }
-        } catch (Exception $e) {
-            error_log("All requests error: " . $e->getMessage());
+        } else {
             $reports['all_requests'] = [];
         }
         
@@ -829,151 +1017,262 @@ function generatePDFPreview($db, $start_date, $end_date, $location) {
             $reports['calibration_summary'] = [];
         }
         
-        try {
-            $reports['client_activity'] = generateClientActivityReport($db, $start_date, $end_date, $location);
-        } catch (Exception $e) {
-            error_log("Client activity error: " . $e->getMessage());
+        if ($include_clients_by_city) {
+            try {
+                $reports['client_activity'] = generateClientActivityReport($db, $start_date, $end_date, $location);
+            } catch (Exception $e) {
+                error_log("Client activity error: " . $e->getMessage());
+                $reports['client_activity'] = [];
+            }
+        } else {
             $reports['client_activity'] = [];
         }
         
         // Create PDF
         try {
-            $pdf = new FPDF('P', 'mm', 'A4');
+            // Extend FPDF with certificate-style header for reports
+            if (!class_exists('ReportPDF')) {
+                class ReportPDF extends FPDF {
+                    function Header() {
+                        $dost_logo_path = __DIR__ . '/../../assets/dost_logo.png';
+                        if (file_exists($dost_logo_path)) {
+                            $this->Image($dost_logo_path, 12, 12, 22);
+                        }
+
+
+                        $bagong_pilipinas_logo_path = __DIR__ . '/../../assets/bagong_pilipinas_logo.png';
+                        if (file_exists($bagong_pilipinas_logo_path)) {
+                            $this->Image($bagong_pilipinas_logo_path, 175, 12, 22);
+                        }
+
+                        $this->SetXY(40, 12);
+                        $this->SetFont('Arial', 'B', 11);
+                        $this->Cell(0, 6, 'Republic of the Philippines', 0, 1, 'L');
+                        $this->SetX(40);
+                        $this->SetFont('Arial', 'B', 12);
+                        $this->SetTextColor(0, 153, 204);
+                        $this->Cell(0, 6, 'DEPARTMENT OF SCIENCE AND TECHNOLOGY', 0, 1, 'L');
+                        $this->SetTextColor(0,0,0);
+                        $this->SetX(40);
+                        $this->SetFont('Arial', 'B', 11);
+                        $this->Cell(0, 6, 'Regional Office No. I', 0, 1, 'L');
+                        $this->SetX(40);
+                        $this->SetFont('Arial', '', 11);
+                        $this->Cell(0, 6, 'Regional Standards and Testing Laboratory', 0, 1, 'L');
+
+                        $lineY = 42;
+                        $this->SetY($lineY);
+                        $this->SetDrawColor(0,0,0);
+                        $this->Line(12, $lineY, 198, $lineY);
+                        $this->Ln(8);
+                    }
+                }
+            }
+            $pdf = new ReportPDF('P', 'mm', 'A4');
         } catch (Exception $e) {
             error_log("FPDF creation error: " . $e->getMessage());
             throw new Exception("Failed to create PDF object: " . $e->getMessage());
         }
         $pdf->AddPage();
         
+        // Modern layout tweaks
+        $pdf->SetMargins(12, 15, 12);
+        $pdf->SetAutoPageBreak(true, 15);
+        $pdf->SetDrawColor(220,220,220);
+        $pdf->SetTextColor(40,40,40);
+        
         // Header
         $pdf->SetFont('Arial', 'B', 16);
         $pdf->Cell(0, 10, 'COMPREHENSIVE REPORTS', 0, 1, 'C');
-        $pdf->Ln(5);
+        $pdf->SetDrawColor(210,210,210);
+        $ySep = $pdf->GetY();
+        $pdf->Line(12, $ySep, 198, $ySep);
+        $pdf->Ln(6);
         
         // Report details
-        $pdf->SetFont('Arial', '', 12);
-        $pdf->Cell(0, 8, 'Date Range: ' . $start_date . ' to ' . $end_date, 0, 1, 'L');
-        $pdf->Cell(0, 8, 'Location: ' . ($location === 'all' ? 'All Locations' : $location), 0, 1, 'L');
-        $pdf->Cell(0, 8, 'Generated on: ' . date('Y-m-d H:i:s'), 0, 1, 'L');
-        $pdf->Ln(10);
-        
-        // Dashboard Summary
-        if (!empty($reports['dashboard_summary'])) {
-            $summary = $reports['dashboard_summary'][0];
-            $pdf->SetFont('Arial', 'B', 14);
-            $pdf->Cell(0, 10, 'DASHBOARD SUMMARY', 0, 1, 'L');
-            $pdf->Ln(5);
-            
-            $pdf->SetFont('Arial', '', 11);
-            $pdf->Cell(60, 8, 'Total Requests:', 0, 0, 'L');
-            $pdf->Cell(0, 8, $summary['total_requests'], 0, 1, 'L');
-            $pdf->Cell(60, 8, 'Total Calibrated Items:', 0, 0, 'L');
-            $pdf->Cell(0, 8, $summary['total_calibrated_items'], 0, 1, 'L');
-            $pdf->Cell(60, 8, 'Completed Requests:', 0, 0, 'L');
-            $pdf->Cell(0, 8, $summary['completed_requests'], 0, 1, 'L');
-            $pdf->Cell(60, 8, 'Total Clients:', 0, 0, 'L');
-            $pdf->Cell(0, 8, $summary['total_clients'], 0, 1, 'L');
-            $pdf->Ln(10);
+        $pdf->SetFont('Arial', '', 11);
+        $pdf->Cell(0, 7, 'Date Range: ' . $start_date . ' to ' . $end_date, 0, 1, 'L');
+        $pdf->Cell(0, 7, 'Location: ' . ($location === 'all' ? 'All Locations' : $location), 0, 1, 'L');
+        $pdf->Cell(0, 7, 'Generated on: ' . date('Y-m-d H:i:s'), 0, 1, 'L');
+        // 3-column summary table (Calibrated, Requests, Clients)
+        $summary = isset($reports['dashboard_summary'][0]) ? $reports['dashboard_summary'][0] : [
+            'total_calibrated_items' => 0,
+            'total_requests' => 0,
+            'total_clients' => 0
+        ];
+        if (isset($reports['dashboard_summary'][0])) {
+            error_log('PDF Preview - Summary: ' . json_encode($reports['dashboard_summary'][0]));
         }
+        $pdf->Ln(4);
+        $pdf->SetFont('Arial', 'B', 11);
+        $pdf->SetFillColor(245,245,245);
+        $pdf->Cell(0, 8, 'SUMMARY', 0, 1, 'L');
+		$pdf->SetFont('Arial', 'B', 10);
+		// Header color #0dafe5 (13,175,229)
+		$pdf->SetFillColor(13,175,229);
+		$pdf->SetTextColor(255,255,255);
+		$pdf->Cell(62, 8, 'Total Calibrated Items', 1, 0, 'C', true);
+		$pdf->Cell(62, 8, 'Total Requests', 1, 0, 'C', true);
+		$pdf->Cell(62, 8, 'Total Clients', 1, 1, 'C', true);
+		$pdf->SetTextColor(40,40,40);
+        $pdf->SetFont('Arial', '', 11);
+        $pdf->Cell(62, 10, number_format((int)$summary['total_calibrated_items']), 1, 0, 'C');
+        $pdf->Cell(62, 10, number_format((int)$summary['total_requests']), 1, 0, 'C');
+        $pdf->Cell(62, 10, number_format((int)$summary['total_clients']), 1, 1, 'C');
+        $pdf->Ln(8);
+        $pdf->Ln(8);
         
-        // All Requests Details
-        error_log("PDF Rendering - Checking all_requests array: " . json_encode($reports['all_requests']));
-        error_log("PDF Rendering - Array count: " . count($reports['all_requests']));
-        error_log("PDF Rendering - Array empty check: " . (empty($reports['all_requests']) ? 'TRUE' : 'FALSE'));
         
-        if (!empty($reports['all_requests'])) {
+        
+        // All Requests Details (with samples and start/finish)
+        if ($include_samples) {
+            error_log("PDF Rendering - Checking all_requests array: " . json_encode($reports['all_requests']));
+            error_log("PDF Rendering - Array count: " . count($reports['all_requests']));
+            error_log("PDF Rendering - Array empty check: " . (empty($reports['all_requests']) ? 'TRUE' : 'FALSE'));
+            
+            // Replace all_requests with richer request+sample rows
+            $requestsWithSamples = generateRequestSamplesReport($db, $start_date, $end_date, $location);
+            if (!empty($requestsWithSamples)) {
             error_log("PDF Rendering - Found " . count($reports['all_requests']) . " requests, rendering table");
             $pdf->SetFont('Arial', 'B', 14);
-            $pdf->Cell(0, 10, 'ALL REQUESTS DETAILS (' . count($reports['all_requests']) . ' requests)', 0, 1, 'L');
+            $pdf->Cell(0, 10, 'ALL SAMPLES (' . count($requestsWithSamples) . ' rows)', 0, 1, 'L');
             $pdf->Ln(5);
             
-            $pdf->SetFont('Arial', 'B', 9);
-            $pdf->Cell(20, 8, 'ID', 1, 0, 'C');
-            $pdf->Cell(25, 8, 'Date Created', 1, 0, 'C');
-            $pdf->Cell(15, 8, 'Status', 1, 0, 'C');
-            $pdf->Cell(40, 8, 'Info', 1, 0, 'C');
-            $pdf->Cell(30, 8, 'Details', 1, 0, 'C');
-            $pdf->Cell(20, 8, 'Count', 1, 0, 'C');
-            $pdf->Cell(20, 8, 'Done', 1, 0, 'C');
-            $pdf->Cell(30, 8, 'Type', 1, 1, 'C');
+			$pdf->SetFont('Arial', 'B', 9);
+			$pdf->SetFillColor(13,175,229);
+			$pdf->SetTextColor(255,255,255);
+			$pdf->Cell(26, 8, 'Ref No', 1, 0, 'C', true);
+			$pdf->Cell(22, 8, 'Date Created', 1, 0, 'C', true);
+			$pdf->Cell(22, 8, 'Status', 1, 0, 'C', true);
+			$pdf->Cell(40, 8, 'Company', 1, 0, 'C', true);
+			$pdf->Cell(30, 8, 'Sample Type', 1, 0, 'C', true);
+			$pdf->Cell(23, 8, 'Started', 1, 0, 'C', true);
+			$pdf->Cell(23, 8, 'Finished', 1, 1, 'C', true);
+			$pdf->SetTextColor(40,40,40);
             
             $pdf->SetFont('Arial', '', 8);
-            foreach ($reports['all_requests'] as $index => $request) {
-                error_log("PDF Rendering - Processing request $index: " . json_encode($request));
+            foreach ($requestsWithSamples as $index => $row) {
                 
                 // Check if we need a new page
                 if ($pdf->GetY() > 250) {
                     $pdf->AddPage();
                     // Repeat header
-                    $pdf->SetFont('Arial', 'B', 9);
-                    $pdf->Cell(20, 8, 'ID', 1, 0, 'C');
-                    $pdf->Cell(25, 8, 'Date Created', 1, 0, 'C');
-                    $pdf->Cell(15, 8, 'Status', 1, 0, 'C');
-                    $pdf->Cell(40, 8, 'Info', 1, 0, 'C');
-                    $pdf->Cell(30, 8, 'Details', 1, 0, 'C');
-                    $pdf->Cell(20, 8, 'Count', 1, 0, 'C');
-                    $pdf->Cell(20, 8, 'Done', 1, 0, 'C');
-                    $pdf->Cell(30, 8, 'Type', 1, 1, 'C');
+					$pdf->SetFont('Arial', 'B', 9);
+					$pdf->SetFillColor(13,175,229);
+					$pdf->SetTextColor(255,255,255);
+					$pdf->Cell(26, 8, 'Ref No', 1, 0, 'C', true);
+					$pdf->Cell(22, 8, 'Date Created', 1, 0, 'C', true);
+					$pdf->Cell(22, 8, 'Status', 1, 0, 'C', true);
+					$pdf->Cell(40, 8, 'Company', 1, 0, 'C', true);
+					$pdf->Cell(30, 8, 'Sample Type', 1, 0, 'C', true);
+					$pdf->Cell(23, 8, 'Started', 1, 0, 'C', true);
+					$pdf->Cell(23, 8, 'Finished', 1, 1, 'C', true);
+					$pdf->SetTextColor(40,40,40);
                     $pdf->SetFont('Arial', '', 8);
                 }
                 
-                // Handle null values - use actual columns that exist
-                $id = $request['id'] ?? 'N/A';
-                $date_created = $request['date_created'] ?? 'N/A';
-                $status = $request['status'] ?? 'N/A';
-                
-                // For now, show basic info - we'll add more columns once we know the schema
-                $pdf->Cell(20, 8, substr($id, 0, 12), 1, 0, 'C');
-                $pdf->Cell(25, 8, ($date_created !== 'N/A') ? date('Y-m-d', strtotime($date_created)) : 'N/A', 1, 0, 'C');
-                $pdf->Cell(15, 8, $status, 1, 0, 'C');
-                $pdf->Cell(40, 8, 'Basic Info', 1, 0, 'C');
-                $pdf->Cell(30, 8, 'Available', 1, 0, 'C');
-                $pdf->Cell(20, 8, '1', 1, 0, 'C');
-                $pdf->Cell(20, 8, '0', 1, 0, 'C');
-                $pdf->Cell(30, 8, 'Request', 1, 1, 'C');
+                $ref = $row['reservation_ref_no'] ?? ($row['request_id'] ?? '');
+                $date_created = $row['date_created'] ?? '';
+                $status = $row['sample_status'] ?? '';
+                $company = $row['company'] ?? '';
+                $sample_type = $row['sample_type'] ?? '';
+                $started = $row['date_started'] ? date('Y-m-d', strtotime($row['date_started'])) : '';
+                $finished = $row['date_completed'] ? date('Y-m-d', strtotime($row['date_completed'])) : '';
+
+                $pdf->Cell(26, 8, substr($ref, 0, 14), 1, 0, 'C');
+                $pdf->Cell(22, 8, $date_created ? date('Y-m-d', strtotime($date_created)) : '', 1, 0, 'C');
+                $pdf->Cell(22, 8, $status, 1, 0, 'C');
+                $pdf->Cell(40, 8, substr($company, 0, 24), 1, 0, 'L');
+                $pdf->Cell(30, 8, substr($sample_type, 0, 14), 1, 0, 'C');
+                $pdf->Cell(23, 8, $started, 1, 0, 'C');
+                $pdf->Cell(23, 8, $finished, 1, 1, 'C');
             }
-            $pdf->Ln(10);
-        } else {
-            $pdf->SetFont('Arial', 'I', 10);
-            $pdf->Cell(0, 8, 'No requests found in database.', 0, 1, 'C');
-            $pdf->Cell(0, 8, 'Debug: Array count = ' . count($reports['all_requests']), 0, 1, 'C');
-            $pdf->Cell(0, 8, 'Debug: Array empty = ' . (empty($reports['all_requests']) ? 'YES' : 'NO'), 0, 1, 'C');
-            error_log("PDF Generation: No requests found in all_requests array");
+                $pdf->Ln(10);
+            } else {
+                $pdf->SetFont('Arial', 'I', 10);
+                $pdf->Cell(0, 8, 'No requests found in database for selected filters.', 0, 1, 'C');
+                error_log("PDF Generation: No requests found in all_requests array");
+            }
         }
         
-        // Calibration Summary
-        if (!empty($reports['calibration_summary'])) {
+        // Clients by City table (no date filter)
+        if ($include_clients_by_city) {
+            $clientsByCity = generateClientsByCity($db);
+            $pdf->Ln(6);
             $pdf->SetFont('Arial', 'B', 14);
-            $pdf->Cell(0, 10, 'CALIBRATION SUMMARY BY DATE', 0, 1, 'L');
-            $pdf->Ln(5);
+            $pdf->Cell(0, 10, 'CLIENTS BY CITY', 0, 1, 'L');
             
-            $pdf->SetFont('Arial', 'B', 9);
-            $pdf->Cell(30, 8, 'Date', 1, 0, 'C');
-            $pdf->Cell(25, 8, 'Total Requests', 1, 0, 'C');
-            $pdf->Cell(25, 8, 'Unique Clients', 1, 0, 'C');
-            $pdf->Cell(25, 8, 'Calibrated Items', 1, 0, 'C');
-            $pdf->Cell(25, 8, 'Completed Samples', 1, 1, 'C');
-            
+            if (!empty($clientsByCity)) {
+			$pdf->SetFont('Arial', 'B', 9);
+			$pdf->SetFillColor(13,175,229);
+			$pdf->SetTextColor(255,255,255);
+			$pdf->Cell(120, 8, 'City', 1, 0, 'L', true);
+			$pdf->Cell(40, 8, 'Total Clients', 1, 1, 'C', true);
+			$pdf->SetTextColor(40,40,40);
             $pdf->SetFont('Arial', '', 8);
-            foreach ($reports['calibration_summary'] as $summary) {
+            foreach ($clientsByCity as $row) {
                 if ($pdf->GetY() > 250) {
                     $pdf->AddPage();
-                    $pdf->SetFont('Arial', 'B', 9);
-                    $pdf->Cell(30, 8, 'Date', 1, 0, 'C');
-                    $pdf->Cell(25, 8, 'Total Requests', 1, 0, 'C');
-                    $pdf->Cell(25, 8, 'Unique Clients', 1, 0, 'C');
-                    $pdf->Cell(25, 8, 'Calibrated Items', 1, 0, 'C');
-                    $pdf->Cell(25, 8, 'Completed Samples', 1, 1, 'C');
+					$pdf->SetFont('Arial', 'B', 9);
+					$pdf->SetFillColor(13,175,229);
+					$pdf->SetTextColor(255,255,255);
+					$pdf->Cell(120, 8, 'City', 1, 0, 'L', true);
+					$pdf->Cell(40, 8, 'Total Clients', 1, 1, 'C', true);
+					$pdf->SetTextColor(40,40,40);
                     $pdf->SetFont('Arial', '', 8);
                 }
-                
-                $pdf->Cell(30, 8, $summary['report_date'], 1, 0, 'C');
-                $pdf->Cell(25, 8, $summary['total_requests'], 1, 0, 'C');
-                $pdf->Cell(25, 8, $summary['unique_clients'], 1, 0, 'C');
-                $pdf->Cell(25, 8, $summary['calibrated_items'], 1, 0, 'C');
-                $pdf->Cell(25, 8, $summary['completed_samples'], 1, 1, 'C');
+                $pdf->Cell(120, 8, substr($row['city'] ?? '', 0, 60), 1, 0, 'L');
+                $pdf->Cell(40, 8, (string)($row['total_clients'] ?? 0), 1, 1, 'C');
+            }
+            } else {
+                $pdf->SetFont('Arial', 'I', 10);
+                $pdf->Cell(0, 8, 'No client locations found.', 0, 1, 'C');
             }
         }
+
+        // Inventory table (no date filter)
+        if ($include_inventory) {
+            $inventory = generateInventoryList($db);
+            $pdf->Ln(6);
+            $pdf->SetFont('Arial', 'B', 14);
+            $pdf->Cell(0, 10, 'INVENTORY', 0, 1, 'L');
+            
+            if (!empty($inventory)) {
+			$pdf->SetFont('Arial', 'B', 9);
+			$pdf->SetFillColor(13,175,229);
+			$pdf->SetTextColor(255,255,255);
+			$pdf->Cell(76, 8, 'Name', 1, 0, 'L', true);
+			$pdf->Cell(34, 8, 'Category', 1, 0, 'C', true);
+			$pdf->Cell(34, 8, 'Status', 1, 0, 'C', true);
+			$pdf->Cell(42, 8, 'Sticker', 1, 1, 'C', true);
+			$pdf->SetTextColor(40,40,40);
+            
+            $pdf->SetFont('Arial', '', 8);
+            foreach ($inventory as $item) {
+                if ($pdf->GetY() > 250) {
+                    $pdf->AddPage();
+					$pdf->SetFont('Arial', 'B', 9);
+					$pdf->SetFillColor(13,175,229);
+					$pdf->SetTextColor(255,255,255);
+					$pdf->Cell(76, 8, 'Name', 1, 0, 'L', true);
+					$pdf->Cell(34, 8, 'Category', 1, 0, 'C', true);
+					$pdf->Cell(34, 8, 'Status', 1, 0, 'C', true);
+					$pdf->Cell(42, 8, 'Sticker', 1, 1, 'C', true);
+					$pdf->SetTextColor(40,40,40);
+                    $pdf->SetFont('Arial', '', 8);
+                }
+                $pdf->Cell(76, 8, substr($item['name'] ?? '', 0, 44), 1, 0, 'L');
+                $pdf->Cell(34, 8, substr($item['category'] ?? '', 0, 18), 1, 0, 'C');
+                $pdf->Cell(34, 8, substr($item['status'] ?? '', 0, 18), 1, 0, 'C');
+                $pdf->Cell(42, 8, substr($item['sticker'] ?? '', 0, 24), 1, 1, 'C');
+            }
+            } else {
+                $pdf->SetFont('Arial', 'I', 10);
+                $pdf->Cell(0, 8, 'No inventory items found.', 0, 1, 'C');
+            }
+        }
+        
+        
         
         // Set headers for PDF preview
         $filename = 'comprehensive_report_' . str_replace('-', '_', $start_date) . '_to_' . str_replace('-', '_', $end_date) . '.pdf';

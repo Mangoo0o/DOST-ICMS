@@ -31,13 +31,17 @@ if ((!empty($data->id) || !empty($data->reference_number)) && !empty($data->stat
             }
         }
 
-        // Get request details before updating
+        // Get request details before updating (including attachment info)
         $getRequestQuery = "
             SELECT r.*, c.first_name, c.last_name, c.email as client_email,
                    (SELECT COUNT(*) FROM sample s WHERE s.reservation_ref_no = r.reference_number) as total_samples,
-                   (SELECT COUNT(*) FROM sample s WHERE s.reservation_ref_no = r.reference_number AND s.is_calibrated = true) as completed_samples
+                   (SELECT COUNT(*) FROM sample s WHERE s.reservation_ref_no = r.reference_number AND s.is_calibrated = true) as completed_samples,
+                   CASE WHEN r.attachment_file_name IS NOT NULL THEN 1 ELSE 0 END as has_attachment,
+                   r.attachment_file_name, r.attachment_file_size,
+                   t.amount as total_amount, t.balance as remaining_balance, t.status as payment_status
             FROM requests r 
             LEFT JOIN clients c ON r.client_id = c.id 
+            LEFT JOIN transaction t ON t.reservation_ref_no = r.reference_number
             WHERE r.id = ?
         ";
         $getStmt = $db->prepare($getRequestQuery);
@@ -69,7 +73,10 @@ if ((!empty($data->id) || !empty($data->reference_number)) && !empty($data->stat
                         // Send completion email
                         $requestDetails = [
                             'total_samples' => $requestData['total_samples'],
-                            'completed_samples' => $requestData['completed_samples']
+                            'completed_samples' => $requestData['completed_samples'],
+                            'total_amount' => $requestData['total_amount'] ?? null,
+                            'remaining_balance' => $requestData['remaining_balance'] ?? null,
+                            'payment_status' => $requestData['payment_status'] ?? null
                         ];
                         $emailService->sendRequestCompletionEmail(
                             $requestData['client_email'],
@@ -77,8 +84,25 @@ if ((!empty($data->id) || !empty($data->reference_number)) && !empty($data->stat
                             $requestData['reference_number'],
                             $requestDetails
                         );
+                    } elseif ($data->status === 'in_progress') {
+                        // Send acceptance email for in_progress status
+                        $requestDetails = [
+                            'total_samples' => $requestData['total_samples'],
+                            'completed_samples' => $requestData['completed_samples'],
+                            'expected_completion' => $requestData['date_expected_completion'] ? date('Y-m-d', strtotime($requestData['date_expected_completion'])) : 'Not set',
+                            'scheduled_date' => $requestData['date_scheduled'] ? date('Y-m-d', strtotime($requestData['date_scheduled'])) : 'Not set',
+                            'has_attachment' => $requestData['has_attachment'],
+                            'attachment_name' => $requestData['attachment_file_name'],
+                            'attachment_size' => $requestData['attachment_file_size']
+                        ];
+                        $emailService->sendRequestAcceptanceEmail(
+                            $requestData['client_email'],
+                            $clientName,
+                            $requestData['reference_number'],
+                            $requestDetails
+                        );
                     } else {
-                        // Send status update email
+                        // Send general status update email for other statuses
                         $requestDetails = [
                             'total_samples' => $requestData['total_samples'],
                             'completed_samples' => $requestData['completed_samples']

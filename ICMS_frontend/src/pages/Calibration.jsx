@@ -66,22 +66,41 @@ function getSectionIcon(section) {
 }
 
 // Normalize common variations to canonical calibration type names
-function normalizeCalibrationType(rawType) {
+function normalizeCalibrationType(rawType, sample = null) {
   if (!rawType) return '';
   const t = String(rawType).trim().toLowerCase();
-  if (t.includes('weighing') && t.includes('scale')) return 'Weighing Scale';
-  if (t === 'thermometer') return 'Thermometer';
-  if (t.includes('thermo') && t.includes('hygro')) return 'Thermohygrometer';
-  if (t.includes('test') && t.includes('weight')) return 'Test Weights';
-  if (t.includes('sphyg')) return 'Sphygmomanometer';
-  return rawType; // fallback to original
+  
+  // Check both type and section fields for better detection
+  const section = sample?.section ? String(sample.section).trim().toLowerCase() : '';
+  const type = sample?.type ? String(sample.type).trim().toLowerCase() : '';
+  
+  // Combine all text for comprehensive detection
+  const combinedText = `${t} ${section} ${type}`.toLowerCase();
+  
+  // More comprehensive detection patterns
+  if (combinedText.includes('weighing') && combinedText.includes('scale')) return 'Weighing Scale';
+  if (combinedText.includes('test') && combinedText.includes('weight')) return 'Test Weights';
+  if (combinedText.includes('thermo') && combinedText.includes('hygro')) return 'Thermohygrometer';
+  if (combinedText.includes('thermometer') && !combinedText.includes('hygro')) return 'Thermometer';
+  if (combinedText.includes('sphyg') || combinedText.includes('blood pressure')) return 'Sphygmomanometer';
+  
+  // Fallback to original type
+  return rawType;
 }
 
 // Centralized router for calibration pages
 function navigateToCalibration(navigate, type, sample, currentStep) {
-  const normalized = normalizeCalibrationType(type);
+  const normalized = normalizeCalibrationType(type, sample);
   const serialNumber = sample.serial_no;
   const equipmentId = sample.id;
+  
+  // Debug logging
+  console.log('Auto-detection debug:', {
+    originalType: type,
+    sampleSection: sample?.section,
+    sampleType: sample?.type,
+    normalized: normalized
+  });
   switch (normalized) {
     case 'Weighing Scale':
       navigate('/uncertainty-calculation', { state: { serialNumber, equipmentId, currentStep } });
@@ -255,10 +274,18 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onViewDetails, sam
       }
       // No calibration data: route based on the sample type
       if (navigateToCalibration(navigate, sample.type, sample)) return;
+      
+      // Try with section field as fallback
+      if (navigateToCalibration(navigate, sample.section, sample)) return;
+      
       toast.error('No calibration data found and equipment type is not supported.');
     } catch (e) {
       // On error, still try to route based on sample type
       if (navigateToCalibration(navigate, sample.type, sample)) return;
+      
+      // Try with section field as fallback
+      if (navigateToCalibration(navigate, sample.section, sample)) return;
+      
       console.error('Error fetching calibration record:', e);
       toast.error('Unable to load calibration data. Please try again.');
     }
@@ -328,7 +355,7 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onViewDetails, sam
       <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center mb-4 flex-shrink-0">
           <h2 className="text-2xl font-bold">Reservation Details</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-lg">✕</button>
+          <button onClick={onClose} className="text-gray-700 hover:text-gray-900 text-xl h-10 w-10 flex items-center justify-center rounded transition-colors font-bold">✕</button>
         </div>
         <div className="overflow-y-auto p-2">
           {isLoading && <p className="text-center">Loading...</p>}
@@ -447,16 +474,31 @@ const ViewReservationModal = ({ isOpen, onClose, reservation, onViewDetails, sam
                                 </motion.button>
                               ) : (
                                 <motion.button
-                                  className="px-3 py-1 rounded border border-[#2a9dab] bg-[#e0f7fa] text-[#2a9dab] font-semibold text-xs hover:bg-[#d0f0f7] focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:ring-offset-2 transition-all duration-200"
-                                  onClick={() => handleCalibrateClick(item)}
-                                  whileHover={{ 
+                                  className={`px-3 py-1 rounded border font-semibold text-xs focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:ring-offset-2 transition-all duration-200 ${
+                                    isCalibrating && calibratingSampleId === item.id
+                                      ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed'
+                                      : 'border-[#2a9dab] bg-[#e0f7fa] text-[#2a9dab] hover:bg-[#d0f0f7]'
+                                  }`}
+                                  onClick={() => !isCalibrating && handleCalibrateClick(item)}
+                                  disabled={isCalibrating && calibratingSampleId === item.id}
+                                  whileHover={!isCalibrating ? { 
                                     scale: 1.05,
                                     backgroundColor: "#d0f0f7",
                                     boxShadow: "0 2px 4px rgba(42, 197, 171, 0.2)"
-                                  }}
-                                  whileTap={{ scale: 0.95 }}
+                                  } : {}}
+                                  whileTap={!isCalibrating ? { scale: 0.95 } : {}}
                                 >
-                                  Calibrate
+                                  {isCalibrating && calibratingSampleId === item.id ? (
+                                    <div className="flex items-center space-x-1">
+                                      <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                      <span>Starting...</span>
+                                    </div>
+                                  ) : (
+                                    'Calibrate'
+                                  )}
                                 </motion.button>
                               )}
                             </td>
@@ -829,7 +871,7 @@ const Calibration = () => {
               <h2 className="text-2xl font-bold text-[#2a9dab]">Calibration Record Details</h2>
               <button
                 onClick={handleCloseCalibModal}
-                className="text-gray-500 hover:text-gray-700 text-lg print:hidden"
+                className="text-gray-700 hover:text-gray-900 text-xl h-10 w-10 flex items-center justify-center rounded transition-colors font-bold print:hidden"
                 aria-label="Close"
               >
                 &times;
@@ -1229,7 +1271,7 @@ const Calibration = () => {
                         <button
                           onClick={() => {
                             console.log('Print Certificate clicked for sample_id:', calibRecord.sample_id);
-                            const certUrl = `http://localhost/ICMS_DOST-%20PSTO/ICMS_backend/api/calibration/generate_certificate.php?sample_id=${calibRecord.sample_id}`;
+                            const certUrl = `http://localhost:8000/api/calibration/generate_certificate.php?sample_id=${calibRecord.sample_id}`;
                             console.log('Certificate URL:', certUrl);
                             
                             showConfirmation(
@@ -1304,7 +1346,7 @@ const Calibration = () => {
                         <button
                           onClick={() => showConfirmation(
                             () => {
-                              window.open(`http://localhost/ICMS_DOST-%20PSTO/ICMS_backend/api/calibration/generate_certificate_thermometer.php?sample_id=${calibRecord.sample_id}`, '_blank');
+                              window.open(`http://localhost:8000/api/calibration/generate_certificate_thermometer.php?sample_id=${calibRecord.sample_id}`, '_blank');
                               handleCloseCalibModal();
                             },
                             'Are you sure you want to print the calibration certificate?',
@@ -1325,7 +1367,7 @@ const Calibration = () => {
                       <div className="flex justify-end items-end mt-6"> {/* Bottom right alignment */}
                         <button
                           onClick={() => {
-                            const certUrl = `http://localhost/ICMS_DOST-%20PSTO/ICMS_backend/api/calibration/generate_certificate_weighing_scale.php?sample_id=${calibRecord.sample_id}`;
+                            const certUrl = `http://localhost:8000/api/calibration/generate_certificate_weighing_scale.php?sample_id=${calibRecord.sample_id}`;
                             
                             showConfirmation(
                               () => {
@@ -1372,7 +1414,7 @@ const Calibration = () => {
                       <div className="flex justify-end items-end mt-6"> {/* Bottom right alignment */}
                         <button
                           onClick={() => {
-                            const certUrl = `http://localhost/ICMS_DOST-%20PSTO/ICMS_backend/api/calibration/generate_certificate_testweights.php?sample_id=${calibRecord.sample_id}`;
+                            const certUrl = `http://localhost:8000/api/calibration/generate_certificate_testweights.php?sample_id=${calibRecord.sample_id}`;
                             
                             showConfirmation(
                               () => {
@@ -1419,7 +1461,7 @@ const Calibration = () => {
                       <div className="flex justify-end items-end mt-6"> {/* Bottom right alignment */}
                         <button
                           onClick={() => {
-                            const certUrl = `http://localhost/ICMS_DOST-%20PSTO/ICMS_backend/api/calibration/generate_certificate_sphygmomanometer.php?sample_id=${calibRecord.sample_id}`;
+                            const certUrl = `http://localhost:8000/api/calibration/generate_certificate_sphygmomanometer.php?sample_id=${calibRecord.sample_id}`;
                             
                             showConfirmation(
                               () => {
@@ -1534,6 +1576,8 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
   const [isCalibModalOpen, setIsCalibModalOpen] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState(null);
   const [sampleStepStatus, setSampleStepStatus] = useState({}); // { [sampleId]: { currentStep, status } }
+  const [isCalibrating, setIsCalibrating] = useState(false);
+  const [calibratingSampleId, setCalibratingSampleId] = useState(null);
   const navigate = useNavigate();
 
   // Pagination for sample table
@@ -1605,7 +1649,21 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
   }, [reservation]);
 
   const handleCalibrateClick = async (sample) => {
+    setIsCalibrating(true);
+    setCalibratingSampleId(sample.id);
+    
     try {
+      // Send calibration start email notification
+      try {
+        await apiService.sendCalibrationStartEmail({
+          sample_id: sample.id
+        });
+        console.log('Calibration start email notification sent successfully');
+      } catch (emailError) {
+        console.log('Calibration start email notification failed:', emailError);
+        // Don't fail the calibration process if email fails
+      }
+
       const res = await apiService.getCalibrationRecordBySampleId(sample.id);
       if (res.data && res.data.calibration_type && res.data.has_calibration !== false) {
         // There is existing calibration data
@@ -1673,13 +1731,24 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
       }
       // No calibration data: navigate by sample type
       if (navigateToCalibration(navigate, sample.type, sample)) return;
+      
+      // Try with section field as fallback
+      if (navigateToCalibration(navigate, sample.section, sample)) return;
+      
       setSelectedEquipment(sample);
       setIsCalibModalOpen(true);
     } catch (e) {
       // On error: attempt to navigate by type, otherwise show modal
       if (navigateToCalibration(navigate, sample.type, sample)) return;
+      
+      // Try with section field as fallback
+      if (navigateToCalibration(navigate, sample.section, sample)) return;
+      
       setSelectedEquipment(sample);
       setIsCalibModalOpen(true);
+    } finally {
+      setIsCalibrating(false);
+      setCalibratingSampleId(null);
     }
   };
 
@@ -1692,12 +1761,32 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
     if (!selectedEquipment) return;
     const sampleId = selectedEquipment.id;
     const serialNumber = selectedEquipment.serial_no;
+    
+    setIsCalibrating(true);
+    setCalibratingSampleId(sampleId);
+    
+    // Send calibration start email notification
+    try {
+      apiService.sendCalibrationStartEmail({
+        sample_id: sampleId
+      }).then(() => {
+        console.log('Calibration start email notification sent successfully');
+      }).catch((emailError) => {
+        console.log('Calibration start email notification failed:', emailError);
+        // Don't fail the calibration process if email fails
+      });
+    } catch (emailError) {
+      console.log('Calibration start email notification failed:', emailError);
+    }
+    
     if (type === 'Sphygmomanometer') {
       setIsCalibModalOpen(false);
       navigate('/sphygmomanometer-calibration', {
         state: { serialNumber, equipmentId: sampleId }
       });
       setSelectedEquipment(null);
+      setIsCalibrating(false);
+      setCalibratingSampleId(null);
       return;
     }
     if (type === 'Test Weights') {
@@ -1706,6 +1795,8 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
         state: { serialNumber, equipmentId: sampleId }
       });
       setSelectedEquipment(null);
+      setIsCalibrating(false);
+      setCalibratingSampleId(null);
       return;
     }
     if (type === 'Thermometer') {
@@ -1714,6 +1805,8 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
         state: { serialNumber, equipmentId: sampleId }
       });
       setSelectedEquipment(null);
+      setIsCalibrating(false);
+      setCalibratingSampleId(null);
       return;
     }
     if (type === 'Thermohygrometer') {
@@ -1722,6 +1815,8 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
         state: { serialNumber, equipmentId: sampleId }
       });
       setSelectedEquipment(null);
+      setIsCalibrating(false);
+      setCalibratingSampleId(null);
       return;
     }
     if (type === 'Weighing Scale') {
@@ -1730,16 +1825,49 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
         state: { serialNumber, equipmentId: sampleId }
       });
       setSelectedEquipment(null);
+      setIsCalibrating(false);
+      setCalibratingSampleId(null);
       return;
     }
     // Add more types as needed
     setIsCalibModalOpen(false);
     setSelectedEquipment(null);
+    setIsCalibrating(false);
+    setCalibratingSampleId(null);
     toast.error('Calibration for this equipment type is not supported.');
   };
 
   return (
     <>
+      {/* Loading Screen Overlay for Calibration Start */}
+      {isCalibrating && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100]">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 text-center">
+            <div className="mb-6">
+              <svg className="animate-spin h-16 w-16 text-[#2a9dab] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Starting Calibration</h3>
+            <p className="text-gray-600 mb-4">Please wait while we prepare your calibration...</p>
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="bg-[#2a9dab] h-2 rounded-full animate-pulse" style={{
+                width: '80%',
+                animation: 'progressBar 2s ease-in-out infinite'
+              }}></div>
+            </div>
+            <style jsx>{`
+              @keyframes progressBar {
+                0% { width: 0%; }
+                50% { width: 80%; }
+                100% { width: 0%; }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-gray-800">Request Details</h1>
         <button
@@ -1866,16 +1994,31 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
                             </motion.button>
                           ) : (
                             <motion.button
-                              className="px-3 py-1 rounded border border-[#2a9dab] bg-[#e0f7fa] text-[#2a9dab] font-semibold text-xs hover:bg-[#d0f0f7] focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:ring-offset-2 transition-all duration-200"
-                              onClick={() => handleCalibrateClick(item)}
-                              whileHover={{ 
+                              className={`px-3 py-1 rounded border font-semibold text-xs focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:ring-offset-2 transition-all duration-200 ${
+                                isCalibrating && calibratingSampleId === item.id
+                                  ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed'
+                                  : 'border-[#2a9dab] bg-[#e0f7fa] text-[#2a9dab] hover:bg-[#d0f0f7]'
+                              }`}
+                              onClick={() => !isCalibrating && handleCalibrateClick(item)}
+                              disabled={isCalibrating && calibratingSampleId === item.id}
+                              whileHover={!isCalibrating ? { 
                                 scale: 1.05,
                                 backgroundColor: "#d0f0f7",
                                 boxShadow: "0 2px 4px rgba(42, 157, 171, 0.2)"
-                              }}
-                              whileTap={{ scale: 0.95 }}
+                              } : {}}
+                              whileTap={!isCalibrating ? { scale: 0.95 } : {}}
                             >
-                              Calibrate
+                              {isCalibrating && calibratingSampleId === item.id ? (
+                                <div className="flex items-center space-x-1">
+                                  <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                  <span>Starting...</span>
+                                </div>
+                              ) : (
+                                'Calibrate'
+                              )}
                             </motion.button>
                           )}
                         </td>

@@ -14,7 +14,13 @@ include_once '../config/db.php';
 include_once '../auth/verify_token.php';
 
 // Verify token and get user data
-$user_data = verifyToken();
+$authResult = verifyToken();
+if (!$authResult['success']) {
+    http_response_code(401);
+    echo json_encode(['message' => $authResult['message'] || 'Unauthorized access']);
+    exit();
+}
+$user_data = $authResult['user'];
 
 $database = new Database();
 $db = $database->getConnection();
@@ -27,6 +33,11 @@ if (empty($data['sample_id']) ||
     empty($data['result_data'])) {
     echo json_encode(['message' => 'Required fields are missing.']);
     exit;
+}
+
+// Automatically set calibrated_by to the current logged-in user if not provided
+if (empty($data['calibrated_by'])) {
+    $data['calibrated_by'] = $user_data->id;
 }
 
 // Convert input_data and result_data to JSON strings if they are arrays

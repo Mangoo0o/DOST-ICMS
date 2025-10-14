@@ -15,7 +15,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 // Auth and role check
 require_once __DIR__ . '/../auth/verify_token.php';
-$user = verifyToken();
+$authResult = verifyToken();
+if (!$authResult['success']) {
+    http_response_code(401);
+    echo json_encode(['message' => $authResult['message'] || 'Unauthorized access']);
+    exit();
+}
+$user = $authResult['user'];
 if (!isset($user->role) || $user->role !== 'admin') {
 	http_response_code(403);
 	echo json_encode(['success' => false, 'message' => 'Forbidden: Admins only']);

@@ -7,9 +7,7 @@ const EmailSettings = () => {
         smtp_host: 'smtp.gmail.com',
         smtp_port: 587,
         smtp_username: '',
-        smtp_password: '',
-        from_email: '',
-        from_name: 'DOST-PSTO ICMS'
+        smtp_password: ''
     });
     
     const [loading, setLoading] = useState(false);
@@ -179,6 +177,7 @@ const EmailSettings = () => {
                                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     placeholder="your-email@gmail.com"
                                 />
+                                <p className="text-xs text-gray-500 mt-1">This will also be used as the sender email address</p>
                             </div>
 
                             <div>
@@ -195,33 +194,6 @@ const EmailSettings = () => {
                                 />
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    From Email
-                                </label>
-                                <input
-                                    type="email"
-                                    name="from_email"
-                                    value={settings.from_email}
-                                    onChange={handleInputChange}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="noreply@dost-psto.com"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    From Name
-                                </label>
-                                <input
-                                    type="text"
-                                    name="from_name"
-                                    value={settings.from_name}
-                                    onChange={handleInputChange}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="DOST-PSTO ICMS"
-                                />
-                            </div>
                         </div>
 
                         {/* Test Email Section */}
@@ -279,21 +251,6 @@ const EmailSettings = () => {
                     >
                         {loading ? 'Saving...' : 'Save Settings'}
                     </button>
-                </div>
-            </div>
-
-            {/* Help Section */}
-            <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-800 mb-2">Configuration Help</h4>
-                <div className="text-sm text-blue-700 space-y-2">
-                    <p><strong>Gmail Setup:</strong></p>
-                    <ul className="list-disc list-inside ml-4 space-y-1">
-                        <li>SMTP Host: smtp.gmail.com</li>
-                        <li>SMTP Port: 587</li>
-                        <li>Username: Your Gmail address</li>
-                        <li>Password: Use an App Password (not your regular password)</li>
-                    </ul>
-                    <p className="mt-2"><strong>Note:</strong> Make sure to enable 2-factor authentication and generate an App Password for Gmail.</p>
                 </div>
             </div>
         </div>

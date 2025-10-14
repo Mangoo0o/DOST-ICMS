@@ -38,11 +38,16 @@ try {
             CONCAT(c.first_name, ' ', c.last_name) as client_name,
             c.email as client_email,
             (SELECT COUNT(*) FROM sample s WHERE s.reservation_ref_no = r.reference_number) as total_sample,
-            (SELECT COUNT(*) FROM sample s WHERE s.reservation_ref_no = r.reference_number AND s.is_calibrated = true) as completed_sample
+            (SELECT COUNT(*) FROM sample s WHERE s.reservation_ref_no = r.reference_number AND s.is_calibrated = true) as completed_sample,
+            t.amount as total_amount,
+            t.balance as remaining_balance,
+            t.status as payment_status
         FROM 
             requests r
         LEFT JOIN 
             clients c ON r.client_id = c.id
+        LEFT JOIN 
+            transaction t ON t.reservation_ref_no = r.reference_number
     ";
     if ($clientId) {
         $query .= " WHERE r.client_id = :client_id ";

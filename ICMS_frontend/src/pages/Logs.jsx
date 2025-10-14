@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const LogsPage = () => {
   const navigate = useNavigate();
@@ -9,6 +10,9 @@ const LogsPage = () => {
   const [systemLogs, setSystemLogs] = useState({ logs: [], limit: 200, offset: 0 });
   const [backupLogs, setBackupLogs] = useState({ logs: [], backup_files: [] });
   const [search, setSearch] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const { user } = useAuth();
 
   useEffect(() => {
     const load = async () => {
@@ -43,6 +47,10 @@ const LogsPage = () => {
       'calibration_update': base + ' bg-emerald-100 text-emerald-700',
       'payment_process': base + ' bg-purple-100 text-purple-700',
       'settings_update': base + ' bg-amber-100 text-amber-700',
+      'change_password': base + ' bg-pink-100 text-pink-700',
+      'add_user': base + ' bg-indigo-100 text-indigo-700',
+      'user_add': base + ' bg-indigo-100 text-indigo-700',
+      'report_generate': base + ' bg-orange-100 text-orange-700',
       'backup_export_sql': base + ' bg-cyan-100 text-cyan-700',
       'backup_import_sql': base + ' bg-teal-100 text-teal-700',
       'backup_event': base + ' bg-gray-100 text-gray-700',
@@ -80,12 +88,28 @@ const LogsPage = () => {
 
   const filtered = useMemo(() => {
     const q = (search || '').toLowerCase();
-    if (!q) return mergedLogs;
+    const sDate = startDate ? new Date(startDate + 'T00:00:00') : null;
+    const eDate = endDate ? new Date(endDate + 'T23:59:59') : null;
+    const isPrivileged = ['admin', 'it_programmer'].includes(user?.role);
+
     return mergedLogs.filter(l => {
+      // role-based: non-privileged users only see their own actions
+      if (!isPrivileged) {
+        if (l.user_id && user?.id && Number(l.user_id) !== Number(user.id)) return false;
+      }
+
+      // date range filter
+      if (sDate || eDate) {
+        const d = new Date((l.created_at || '').replace(' ', 'T'));
+        if (sDate && d < sDate) return false;
+        if (eDate && d > eDate) return false;
+      }
+
+      if (!q) return true;
       const det = typeof l.details === 'string' ? l.details : JSON.stringify(l.details);
       return `${l.action} ${l.user_name ?? ''} ${det ?? ''}`.toLowerCase().includes(q);
     });
-  }, [mergedLogs, search]);
+  }, [mergedLogs, search, startDate, endDate, user]);
 
   const handleBack = () => {
     navigate(-1); // Go back to previous page
@@ -93,19 +117,16 @@ const LogsPage = () => {
 
   return (
     <div className="p-6 bg-gray-100 h-full">
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        {/* Back Button */}
-        <div className="mb-6">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 px-4 py-2 bg-[#2a9dab] text-white hover:bg-[#217a8c] rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back
-          </button>
-        </div>
+      <div className="bg-white rounded-lg shadow-lg p-6 relative">
+        {/* Close (X) Button */}
+        <button
+          onClick={handleBack}
+          className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-lg h-8 w-8 flex items-center justify-center rounded hover:bg-gray-200 transition-colors"
+          title="Close"
+          aria-label="Close"
+        >
+          ✕
+        </button>
 
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-semibold text-gray-800">Logs</h1>
@@ -115,22 +136,43 @@ const LogsPage = () => {
           <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-lg">{error}</div>
         )}
 
-        <div className="mb-4">
-          <input
-            type="text"
-            placeholder="Filter by action, user, or text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] transition-colors"
-          />
+        <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Search</label>
+            <input
+              type="text"
+              placeholder="Filter by action, user, or text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Start date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">End date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:border-[#2a9dab] transition-colors"
+            />
+          </div>
         </div>
 
         {loading ? (
           <div className="text-sm text-gray-500">Loading…</div>
         ) : (
-          <div className="overflow-auto">
+          <div className="max-h-[70vh] overflow-y-auto">
             <table className="min-w-full bg-white">
-              <thead>
+              <thead className="sticky top-0 bg-white">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>

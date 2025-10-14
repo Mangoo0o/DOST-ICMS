@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RiAddLine, RiEditLine, RiDeleteBinLine, RiUserLine, RiCheckLine, RiCloseLine } from 'react-icons/ri';
+import { MdInfo, MdWarning, MdError, MdCheckCircle } from 'react-icons/md';
 import { apiService } from '../services/api';
 
 const SignatoryManagement = () => {
@@ -219,28 +220,28 @@ const SignatoryManagement = () => {
 
   return (
     <div className="space-y-6">
-      {/* Back Button */}
-      <div className="mb-4">
-        <button
-          onClick={handleBackToSettings}
-          className="flex items-center gap-2 px-4 py-2 bg-[#2a9dab] text-white hover:bg-[#217a8c] rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Back
-        </button>
-      </div>
-
-      {/* Header */}
+      {/* Header with Back and Add buttons */}
       <div className="flex items-center justify-between">
+        <div className="flex items-center ml-8">
+          <button
+            onClick={handleBackToSettings}
+            className="flex items-center gap-2 px-4 py-2 bg-[#2a9dab] text-white hover:bg-[#217a8c] rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+        </div>
+        
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Signatory Management</h2>
         </div>
-        <div className="flex items-center gap-4">
+        
+        <div className="flex items-center mr-8">
           <button
             onClick={handleAddNew}
-            className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors shadow-sm hover:shadow-md"
           >
             <RiAddLine className="w-5 h-5" />
             Add Signatory
@@ -309,17 +310,19 @@ const SignatoryManagement = () => {
                       )}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex items-center justify-end gap-2">
+                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                    <div className="flex items-center justify-center gap-3">
                       <button
                         onClick={() => handleEdit(signatory)}
-                        className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                        className="p-2 text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full transition-colors"
+                        title="Edit signatory"
                       >
                         <RiEditLine className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDelete(signatory.id)}
-                        className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                        className="p-2 text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
+                        title="Delete signatory"
                       >
                         <RiDeleteBinLine className="w-4 h-4" />
                       </button>
@@ -334,11 +337,19 @@ const SignatoryManagement = () => {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              {editingSignatory ? 'Edit Signatory' : 'Add New Signatory'}
-            </h3>
+        <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-100 dark:border-gray-700">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {editingSignatory ? 'Edit Signatory' : 'Add New Signatory'}
+              </h3>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
             
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -410,28 +421,31 @@ const SignatoryManagement = () => {
                 </label>
               </div>
               
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-700">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  className="px-6 py-2.5 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-600 hover:border-gray-400 dark:hover:border-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className={`px-4 py-2 rounded-lg transition-colors ${
+                  className={`px-6 py-2.5 rounded-xl transition-all duration-200 font-semibold shadow-lg flex items-center gap-2 ${
                     submitting 
-                      ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                      ? 'bg-gray-400 text-gray-200 cursor-not-allowed opacity-50' 
+                      : 'bg-[#2a9dab] text-white hover:bg-[#238a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2a9dab] hover:shadow-md transform hover:-translate-y-0.5'
                   }`}
                 >
                   {submitting ? (
-                    <span className="flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <>
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
                       {editingSignatory ? 'Updating...' : 'Creating...'}
-                    </span>
+                    </>
                   ) : (
                     editingSignatory ? 'Update' : 'Create'
                   )}
@@ -444,31 +458,43 @@ const SignatoryManagement = () => {
 
       {/* Confirmation Modal */}
       {confirmationModal.show && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              {confirmationModal.title}
-            </h3>
-            
-            <div className="mb-6">
-              <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line">
-                {confirmationModal.message}
-              </p>
+        <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-100 dark:border-gray-700">
+            <div className="flex items-start">
+              <div className="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900 dark:to-indigo-900 border-2 border-blue-200 dark:border-blue-700">
+                {confirmationModal.type === 'error' ? (
+                  <MdError className="w-6 h-6 text-red-500" />
+                ) : confirmationModal.type === 'success' ? (
+                  <MdCheckCircle className="w-6 h-6 text-[#2a9dab]" />
+                ) : (
+                  <MdInfo className="w-6 h-6 text-[#2a9dab]" />
+                )}
+              </div>
+              <div className="ml-4 flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white leading-6">
+                  {confirmationModal.title}
+                </h3>
+                <div className="mt-2">
+                  <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-line">
+                    {confirmationModal.message}
+                  </p>
+                </div>
+              </div>
             </div>
             
-            <div className="flex justify-end gap-3">
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100 dark:border-gray-700">
               <button
                 onClick={confirmationModal.onCancel}
-                className="px-4 py-2 text-cyan-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-6 py-2.5 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-600 hover:border-gray-400 dark:hover:border-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmationModal.onConfirm}
-                className={`px-4 py-2 text-white rounded-lg transition-colors ${
+                className={`px-6 py-2.5 text-white rounded-xl transition-all duration-200 font-semibold shadow-lg hover:shadow-md transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                   confirmationModal.type === 'error' 
-                    ? 'bg-red-600 hover:bg-red-700' 
-                    : 'bg-cyan-600 hover:bg-cyan-700'
+                    ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' 
+                    : 'bg-[#2a9dab] hover:bg-[#238a91] focus:ring-[#2a9dab]'
                 }`}
               >
                 {confirmationModal.type === 'error' ? 'OK' : 'Confirm'}

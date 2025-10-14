@@ -19,7 +19,7 @@ class EmailServiceSimple {
             $db = (new Database())->getConnection();
             
             // Get email settings from system_settings table
-            $settingsQuery = "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('email_enabled', 'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'from_email', 'from_name')";
+            $settingsQuery = "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('email_enabled', 'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password')";
             $stmt = $db->prepare($settingsQuery);
             $stmt->execute();
             $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
@@ -29,8 +29,9 @@ class EmailServiceSimple {
             $this->smtpPort = (int)($settings['smtp_port'] ?? 587);
             $this->smtpUsername = $settings['smtp_username'] ?? '';
             $this->smtpPassword = $settings['smtp_password'] ?? '';
-            $this->fromEmail = $settings['from_email'] ?? 'noreply@dost-psto.com';
-            $this->fromName = $settings['from_name'] ?? 'DOST-PSTO ICMS';
+            // SMTP username automatically becomes the sender email
+            $this->fromEmail = $settings['smtp_username'] ?? '';
+            $this->fromName = 'ICMS';
             
         } catch (Exception $e) {
             error_log("EmailServiceSimple: Failed to load settings - " . $e->getMessage());

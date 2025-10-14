@@ -154,6 +154,12 @@ const ModernInput = (props) => {
   const { handleKeyDown: navigationHandler } = useInputNavigation();
 
   const handleKeyDown = (e) => {
+    // Prevent E, e, +, - characters in number inputs to avoid scientific notation
+    if (props.type === 'number' && ['e', 'E', '+', '-'].includes(e.key)) {
+      e.preventDefault();
+      return;
+    }
+    
     navigationHandler(e, props.onKeyDown);
   };
 
@@ -235,6 +241,13 @@ function ThermohygrometerUncertaintyCalculator() {
   const [calibrationConfirmationTitle, setCalibrationConfirmationTitle] = useState('');
   const [calibrationConfirmationMessage, setCalibrationConfirmationMessage] = useState('');
   const [calibrationConfirmationType, setCalibrationConfirmationType] = useState('');
+
+  // Next-step confirmation state
+  const [showNextConfirm, setShowNextConfirm] = useState(false);
+  const [isNextSaving, setIsNextSaving] = useState(false);
+
+  // Calibration completion loading state
+  const [isCalibrationLoading, setIsCalibrationLoading] = useState(false);
 
   const [uucReadings, setUucReadings] = useState({
     temp: [["","",""],["","",""],["","",""]],
@@ -677,6 +690,10 @@ function ThermohygrometerUncertaintyCalculator() {
     manufacturer: '',
     model: '',
     serialNo: '',
+    tempStart: '',
+    tempEnd: '',
+    humidityStart: '',
+    humidityEnd: '',
   });
   const calDetailsRef = useRef(calDetails);
   // Keep ref in sync with state
@@ -824,6 +841,13 @@ function ThermohygrometerUncertaintyCalculator() {
           <InputRow placeholder="Manufacturer" value={calDetails.manufacturer} onChange={e => { setCalDetails(d => { const v = {...d, manufacturer: e.target.value}; calDetailsRef.current = v; return v; }); }} />
           <InputRow placeholder="Model" value={calDetails.model} onChange={e => { setCalDetails(d => { const v = {...d, model: e.target.value}; calDetailsRef.current = v; return v; }); }} />
           <InputRow placeholder="Serial No." value={calDetails.serialNo} onChange={e => { setCalDetails(d => { const v = {...d, serialNo: e.target.value}; calDetailsRef.current = v; return v; }); }} />
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-gray-700 mb-2">Environmental Conditions</div>
+          <InputRow placeholder="Temperature Start (°C)" value={calDetails.tempStart} onChange={e => { setCalDetails(d => { const v = {...d, tempStart: e.target.value}; calDetailsRef.current = v; return v; }); }} />
+          <InputRow placeholder="Temperature End (°C)" value={calDetails.tempEnd} onChange={e => { setCalDetails(d => { const v = {...d, tempEnd: e.target.value}; calDetailsRef.current = v; return v; }); }} />
+          <InputRow placeholder="Humidity Start (%RH)" value={calDetails.humidityStart} onChange={e => { setCalDetails(d => { const v = {...d, humidityStart: e.target.value}; calDetailsRef.current = v; return v; }); }} />
+          <InputRow placeholder="Humidity End (%RH)" value={calDetails.humidityEnd} onChange={e => { setCalDetails(d => { const v = {...d, humidityEnd: e.target.value}; calDetailsRef.current = v; return v; }); }} />
         </div>
       </div>
     </CardSection>
@@ -1404,6 +1428,8 @@ function ThermohygrometerUncertaintyCalculator() {
       console.error('No sampleId provided for thermohygrometer calibration confirmation');
       return;
     }
+    
+    setIsCalibrationLoading(true);
     try {
       console.log('Calling updateSampleStatus with sampleId:', sampleId, 'status: completed');
       const response = await apiService.updateSampleStatus(sampleId, 'completed');
@@ -1423,6 +1449,8 @@ function ThermohygrometerUncertaintyCalculator() {
       console.error('Failed to update sample status:', e);
       toast.error('Failed to update sample status: ' + (e.message || 'Unknown error'));
       throw e; // Re-throw to be caught by the calling function
+    } finally {
+      setIsCalibrationLoading(false);
     }
   };
 
@@ -1451,6 +1479,9 @@ function ThermohygrometerUncertaintyCalculator() {
       // Clear unsaved changes to prevent back navigation confirmation
       setHasUnsavedChanges(false);
       
+      // Clear auto-save backup since calibration is completed
+      clearBackup();
+      
       // Show success message
       toast.success('Calibration completed successfully!');
       
@@ -1475,25 +1506,45 @@ function ThermohygrometerUncertaintyCalculator() {
       // Check if calibration details have been filled
       Object.values(calDetails).some(val => val && val.toString().trim() !== '') ||
       // Check if standard specs have been filled
-      Object.values(standardSpecs).some(val => val && val.toString().trim() !== '');
+      Object.values(standardSpecs).some(val => val && val.toString().trim() !== '') ||
+      // Check if other important fields have been filled
+      Object.values(uucInitial).some(val => val && val.toString().trim() !== '') ||
+      Object.values(uucFinal).some(val => val && val.toString().trim() !== '') ||
+      Object.values(refInitial).some(val => val && val.toString().trim() !== '') ||
+      Object.values(refFinal).some(val => val && val.toString().trim() !== '') ||
+      Object.values(lowestRefTemp).some(val => val && val.toString().trim() !== '') ||
+      Object.values(lowestUucTemp).some(val => val && val.toString().trim() !== '') ||
+      Object.values(lowestRefHumidity).some(val => val && val.toString().trim() !== '') ||
+      Object.values(lowestUucHumidity).some(val => val && val.toString().trim() !== '') ||
+      // Check if ambient temperature readings have been entered
+      ambientTempReadings.some(row => row.some(val => val !== ''));
     
     setHasUnsavedChanges(hasChanges);
-  }, [uucReadings, refReadings, calDetails, standardSpecs]);
+  }, [uucReadings, refReadings, calDetails, standardSpecs, uucInitial, uucFinal, refInitial, refFinal, lowestRefTemp, lowestUucTemp, lowestRefHumidity, lowestUucHumidity, ambientTempReadings]);
 
-  // Auto-save functionality
-  const saveKey = `thermohygrometer_calibration_${sampleId || calDetailsRef.current.sampleNo || 'new'}`;
-  
-  const { manualSave, clearBackup } = useAutoSave(
-    () => handleSaveCalibration(),
-    { 
-      uucReadings, 
-      refReadings, 
-      u_std, 
-      k_std, 
-      drift, 
-      resolution, 
-      hysteresis, 
-      uniformity, 
+  // Auto-save function - saves progress without marking as completed
+  const handleAutoSave = useCallback(async () => {
+    if (!sampleId) {
+      console.log('Auto-save skipped: No sample ID');
+      return false;
+    }
+    
+    console.log('Auto-saving thermohygrometer calibration progress...');
+    console.log('Auto-save conditions:', {
+      hasUnsavedChanges,
+      sampleId,
+      enabled: hasUnsavedChanges && sampleId
+    });
+    
+    const inputData = {
+      uucReadings,
+      refReadings,
+      u_std,
+      k_std,
+      drift,
+      resolution,
+      hysteresis,
+      uniformity,
       currentStep,
       uucInitial,
       uucFinal,
@@ -1503,17 +1554,67 @@ function ThermohygrometerUncertaintyCalculator() {
       lowestUucTemp,
       lowestRefHumidity,
       lowestUucHumidity,
-      calDetails: calDetailsRef.current,
+      calDetails,
       standardSpecs,
-      ambientTempReadings
+      ambientTempReadings,
+    };
+    const resultData = { 
+      U_temp: U_temp || 0, 
+      U_humidity: U_humidity || 0 
+    };
+    
+    console.log('Auto-save data:', { inputData, resultData });
+    
+    try {
+      const response = await apiService.saveCalibrationRecord({
+        sample_id: sampleId,
+        calibration_type: 'Thermohygrometer',
+        input_data: inputData,
+        result_data: resultData,
+        calibrated_by: user?.id || null,
+        date_started: new Date().toISOString(),
+        date_completed: null // Don't mark as completed for auto-save
+      });
+      
+      if (response && response.data) {
+        console.log('Auto-save successful');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Auto-save failed:', e);
+      return false;
+    }
+  }, [sampleId, uucReadings, refReadings, u_std, k_std, drift, resolution, hysteresis, uniformity, currentStep, uucInitial, uucFinal, refInitial, refFinal, lowestRefTemp, lowestUucTemp, lowestRefHumidity, lowestUucHumidity, standardSpecs, ambientTempReadings, user?.id]);
+
+  // Auto-save functionality
+  const saveKey = `thermohygrometer_calibration_${sampleId || calDetailsRef.current.sampleNo || 'new'}`;
+  
+  const { manualSave, clearBackup } = useAutoSave(
+    handleAutoSave,
+    { 
+      uucReadings, 
+      refReadings, 
+      currentStep,
+      calDetails
     },
     {
-      interval: 10000, // 10 seconds - more frequent saves
-      enabled: false, // Disabled auto-save to prevent status issues
+      interval: 30000, // 30 seconds
+      enabled: hasUnsavedChanges && sampleId,
       showToast: false,
       saveKey
     }
   );
+
+  // Debug auto-save status
+  useEffect(() => {
+    console.log('Thermohygrometer auto-save status:', {
+      hasUnsavedChanges,
+      sampleId,
+      enabled: hasUnsavedChanges && sampleId,
+      saveKey
+    });
+  }, [hasUnsavedChanges, sampleId, saveKey]);
 
   // Page refresh detection and data restoration
   const restoreData = useCallback((restoredData) => {
@@ -1556,7 +1657,8 @@ function ThermohygrometerUncertaintyCalculator() {
     hasUnsavedChanges,
     confirmationTitle: "Leave Calibration?",
     confirmationMessage: "You have unsaved changes in your thermohygrometer calibration. Are you sure you want to leave? Your progress will be lost.",
-    confirmationType: "warning"
+    confirmationType: "warning",
+    onSave: manualSave
   });
 
   // Auto-populate from existing calibration record if available
@@ -1583,7 +1685,7 @@ function ThermohygrometerUncertaintyCalculator() {
           setLowestRefHumidity(input.lowestRefHumidity ?? ["", "", ""]);
           setLowestUucHumidity(input.lowestUucHumidity ?? ["", "", ""]);
           setCalDetails(input.calDetails ?? {
-            referenceNo: '', sampleNo: '', calibratedBy: '', customer: '', address: '', dateSubmitted: '', dateCalibrated: '', placeOfCalibration: '', type: '', manufacturer: '', model: '', serialNo: ''
+            referenceNo: '', sampleNo: '', calibratedBy: '', customer: '', address: '', dateSubmitted: '', dateCalibrated: '', placeOfCalibration: '', type: '', manufacturer: '', model: '', serialNo: '', tempStart: '', tempEnd: '', humidityStart: '', humidityEnd: ''
           });
           setStandardSpecs(input.standardSpecs ?? {
             description: '', make: '', model: '', serialNo: '', resolutionTemp: '', resolutionRh: '', readabilityTemp: '', readabilityRh: '', envStartTime: '', envStartTemp: '', envStartRh: '', envEndTime: '', envEndTemp: '', envEndRh: '', envAvgTemp: '', envAvgRh: '', rgTemp: '', rgRh: '', rdTemp: '', rdRh: '', udTemp: '', udRh: '', absUncDev: '', measuredValue: '', relUnc: '', dof: '', relUncFormula: '', sensCoeff: '', qualityLevel: '5',
@@ -1855,12 +1957,41 @@ function ThermohygrometerUncertaintyCalculator() {
 
   return (
     <div className="p-4 md:p-8 bg-gray-100 min-h-screen font-sans">
+      {/* Loading Screen Overlay for Calibration Completion */}
+      {isCalibrationLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100]">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 text-center">
+            <div className="mb-6">
+              <svg className="animate-spin h-16 w-16 text-[#2a9dab] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Completing Calibration</h3>
+            <p className="text-gray-600 mb-4">Please wait while we finalize your calibration...</p>
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="bg-[#2a9dab] h-2 rounded-full animate-pulse" style={{
+                width: '80%',
+                animation: 'progressBar 2s ease-in-out infinite'
+              }}></div>
+            </div>
+            <style jsx>{`
+              @keyframes progressBar {
+                0% { width: 0%; }
+                50% { width: 80%; }
+                100% { width: 0%; }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
+
       <Toaster position="top-center" />
       <div className="w-full mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 relative">
         {/* Close (X) Button */}
         <button
           onClick={handleBackClick}
-          className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-lg h-8 w-8 flex items-center justify-center rounded hover:bg-gray-200 transition-colors"
+          className="absolute top-4 right-4 text-gray-700 hover:text-gray-900 text-xl h-10 w-10 flex items-center justify-center rounded transition-colors font-bold"
           title="Close"
           aria-label="Close"
         >
@@ -1889,101 +2020,159 @@ function ThermohygrometerUncertaintyCalculator() {
       {currentStep < steps.length ? (
               <ModernButton
                 onClick={async () => {
-                  // Use up-to-date state for validation and saving
-                  setCalDetails(prevCalDetails => {
-                    // Step 1: Calibration Details validation
-                    if (currentStep === 1) {
-                      const requiredFields = [
-                        'referenceNo', 'sampleNo', 'calibratedBy', 'customer', 'address',
-                        'dateSubmitted', 'dateCalibrated',
-                        'type', 'model', 'serialNo'
-                      ];
-                      const emptyField = requiredFields.find(f => !prevCalDetails[f] || prevCalDetails[f].toString().trim() === '');
-                      if (emptyField) {
-                        toast.error('Please fill in all Calibration Details fields before proceeding.', {
-                          position: 'top-center',
-                          duration: 4000,
-                          style: {
-                            textAlign: 'center',
-                            fontSize: '14px',
-                            fontWeight: '500'
-                          }
-                        });
-                        return prevCalDetails;
-                      }
+                  console.log('Next button clicked on step:', currentStep);
+                  
+                  // Validation logic moved outside of setCalDetails to prevent duplicates
+                  let validationError = false;
+                  
+                  // Step 1: Calibration Details validation
+                  if (currentStep === 1) {
+                    const requiredFields = [
+                      'referenceNo', 'sampleNo', 'calibratedBy', 'customer', 'address',
+                      'dateSubmitted', 'dateCalibrated',
+                      'type', 'model', 'serialNo'
+                    ];
+                    const emptyField = requiredFields.find(f => !calDetails[f] || calDetails[f].toString().trim() === '');
+                    if (emptyField) {
+                      toast.error('Please fill in all Calibration Details fields before proceeding.', {
+                        position: 'top-center',
+                        duration: 5000,
+                        style: {
+                          textAlign: 'center',
+                          fontSize: '18px',
+                          fontWeight: '600',
+                          padding: '20px 32px',
+                          minWidth: '450px',
+                          backgroundColor: '#fef2f2',
+                          color: '#000000',
+                          border: '2px solid #fecaca',
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                          backdropFilter: 'blur(8px)'
+                        }
+                      });
+                      validationError = true;
                     }
-                    // Step 2: Standard Uncertainty validation
-                    if (currentStep === 2) {
-                      const requiredStandardFields = [
-                        'rgTemp', 'rgRh', 'rdTemp', 'rdRh', 'absUncDev', 'measuredValue', 'qualityLevel'
-                      ];
-                      const emptyStandardField = requiredStandardFields.find(f => !standardSpecs[f] || standardSpecs[f].toString().trim() === '');
-                      if (emptyStandardField) {
-                        toast.error('Please fill in all Standard Uncertainty fields before proceeding.', {
-                          position: 'top-center',
-                          duration: 4000,
-                          style: {
-                            textAlign: 'center',
-                            fontSize: '14px',
-                            fontWeight: '500'
-                          }
-                        });
-                        return prevCalDetails;
-                      }
+                  }
+                  // Step 2: Standard Uncertainty validation
+                  else if (currentStep === 2) {
+                    const requiredStandardFields = [
+                      'rgTemp', 'rgRh', 'rdTemp', 'rdRh', 'absUncDev', 'measuredValue', 'qualityLevel'
+                    ];
+                    const emptyStandardField = requiredStandardFields.find(f => !standardSpecs[f] || standardSpecs[f].toString().trim() === '');
+                    if (emptyStandardField) {
+                      toast.error('Please fill in all Standard Uncertainty fields before proceeding.', {
+                        position: 'top-center',
+                        duration: 5000,
+                        style: {
+                          textAlign: 'center',
+                          fontSize: '18px',
+                          fontWeight: '600',
+                          padding: '20px 32px',
+                          minWidth: '450px',
+                          backgroundColor: '#fef2f2',
+                          color: '#000000',
+                          border: '2px solid #fecaca',
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                          backdropFilter: 'blur(8px)'
+                        }
+                      });
+                      validationError = true;
                     }
-                    // Step 3: Temperature Repeatability validation
-                    if (currentStep === 3) {
-                      const tempEmpty = refReadings.temp.some(row => row.some(v => v === '' || v === null || v === undefined)) ||
-                        uucReadings.temp.some(row => row.some(v => v === '' || v === null || v === undefined));
-                      if (tempEmpty) {
-                        toast.error('Please fill in all Temperature Repeatability readings before proceeding.', {
-                          position: 'top-center',
-                          duration: 4000,
-                          style: {
-                            textAlign: 'center',
-                            fontSize: '14px',
-                            fontWeight: '500'
-                          }
-                        });
-                        return prevCalDetails;
-                      }
+                  }
+                  // Step 3: Temperature Repeatability validation
+                  else if (currentStep === 3) {
+                    const tempEmpty = refReadings.temp.some(row => row.some(v => v === '' || v === null || v === undefined)) ||
+                      uucReadings.temp.some(row => row.some(v => v === '' || v === null || v === undefined));
+                    if (tempEmpty) {
+                      toast.error('Please fill in all Temperature Repeatability readings before proceeding.', {
+                        position: 'top-center',
+                        duration: 5000,
+                        style: {
+                          textAlign: 'center',
+                          fontSize: '18px',
+                          fontWeight: '600',
+                          padding: '20px 32px',
+                          minWidth: '450px',
+                          backgroundColor: '#fef2f2',
+                          color: '#000000',
+                          border: '2px solid #fecaca',
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                          backdropFilter: 'blur(8px)'
+                        }
+                      });
+                      validationError = true;
                     }
-                    // Step 4: Humidity Repeatability validation
-                    if (currentStep === 4) {
-                      const humidityEmpty = refReadings.humidity.some(row => row.some(v => v === '' || v === null || v === undefined)) ||
-                        uucReadings.humidity.some(row => row.some(v => v === '' || v === null || v === undefined));
-                      if (humidityEmpty) {
-                        toast.error('Please fill in all Humidity Repeatability readings before proceeding.', {
-                          position: 'top-center',
-                          duration: 4000,
-                          style: {
-                            textAlign: 'center',
-                            fontSize: '14px',
-                            fontWeight: '500'
-                          }
-                        });
-                        return prevCalDetails;
-                      }
+                  }
+                  // Step 4: Humidity Repeatability validation
+                  else if (currentStep === 4) {
+                    const humidityEmpty = refReadings.humidity.some(row => row.some(v => v === '' || v === null || v === undefined)) ||
+                      uucReadings.humidity.some(row => row.some(v => v === '' || v === null || v === undefined));
+                    if (humidityEmpty) {
+                      toast.error('Please fill in all Humidity Repeatability readings before proceeding.', {
+                        position: 'top-center',
+                        duration: 5000,
+                        style: {
+                          textAlign: 'center',
+                          fontSize: '18px',
+                          fontWeight: '600',
+                          padding: '20px 32px',
+                          minWidth: '450px',
+                          backgroundColor: '#fef2f2',
+                          color: '#000000',
+                          border: '2px solid #fecaca',
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                          backdropFilter: 'blur(8px)'
+                        }
+                      });
+                      validationError = true;
                     }
-                    // Step 5: Ambient conditions validation (ensure at least one value exists per column)
-                    if (currentStep === 5) {
-                      const perColumnHasValue = [0,1,2].every(colIdx => ambientTempReadings.some(row => row[colIdx] !== '' && row[colIdx] !== null && row[colIdx] !== undefined));
-                      if (!perColumnHasValue) {
-                        toast.error('Please enter at least one ambient temperature value for each T1, T2, and T3.', {
-                          position: 'top-center',
-                          duration: 4000,
-                          style: { textAlign: 'center', fontSize: '14px', fontWeight: '500' }
-                        });
-                        return prevCalDetails;
-                      }
+                  }
+                  // Step 5: Ambient conditions validation (ensure at least one value exists per column)
+                  else if (currentStep === 5) {
+                    const perColumnHasValue = [0,1,2].every(colIdx => ambientTempReadings.some(row => row[colIdx] !== '' && row[colIdx] !== null && row[colIdx] !== undefined));
+                    if (!perColumnHasValue) {
+                      toast.error('Please enter at least one ambient temperature value for each T1, T2, and T3.', {
+                        position: 'top-center',
+                        duration: 5000,
+                        style: {
+                          textAlign: 'center',
+                          fontSize: '18px',
+                          fontWeight: '600',
+                          padding: '20px 32px',
+                          minWidth: '450px',
+                          backgroundColor: '#fef2f2',
+                          color: '#000000',
+                          border: '2px solid #fecaca',
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                          backdropFilter: 'blur(8px)'
+                        }
+                      });
+                      validationError = true;
                     }
+                  }
+                  
+                  // Only proceed if no validation errors
+                  if (!validationError) {
+                    console.log('No validation errors, proceeding to save calibration...');
                     // Save calibration with the latest calDetails
-                    handleSaveCalibration({
-                      calDetails: prevCalDetails
-                    });
-                    setCurrentStep(Math.min(steps.length, currentStep + 1));
-                    return prevCalDetails;
-                  });
+                    try {
+                      await handleSaveCalibration({
+                        calDetails: calDetails
+                      });
+                      console.log('Calibration saved successfully, showing next confirm modal...');
+                      setShowNextConfirm(true);
+                    } catch (error) {
+                      console.error('Error saving calibration:', error);
+                      toast.error('Failed to save calibration data.');
+                    }
+                  } else {
+                    console.log('Validation errors found, not proceeding');
+                  }
                 }}
               >
                 Next
@@ -2025,6 +2214,36 @@ function ThermohygrometerUncertaintyCalculator() {
         confirmText="Confirm"
         cancelText="Cancel"
         isLoading={false}
+      />
+
+      {/* Next Step Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showNextConfirm}
+        onClose={() => {
+          console.log('Next confirm modal closed');
+          setShowNextConfirm(false);
+        }}
+        onConfirm={async () => {
+          console.log('Next confirm modal confirmed');
+          try {
+            setIsNextSaving(true);
+            await manualSave();
+            setShowNextConfirm(false);
+            setCurrentStep((s) => Math.min(7, s + 1));
+            console.log('Moved to next step:', Math.min(7, currentStep + 1));
+          } catch (error) {
+            console.error('Error in next confirm:', error);
+            toast.error('Failed to save progress.');
+          } finally {
+            setIsNextSaving(false);
+          }
+        }}
+        title="Proceed to next step?"
+        message="Your progress will be saved before moving to the next step."
+        type="info"
+        confirmText="Save & Continue"
+        cancelText="Stay Here"
+        isLoading={isNextSaving}
       />
     </div>
   );

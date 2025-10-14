@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // API service configuration
 const API_BASE_URL = import.meta.env.DEV 
-  ? 'http://localhost/ICMS_DOST-%20PSTO/ICMS_backend'
+  ? 'http://localhost:8000'
   : '/api';
 
 const api = axios.create({
@@ -19,8 +19,10 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
     console.log('Token added to request:', token.substring(0, 50) + '...');
-  } else {
-    console.warn('No token found in localStorage');
+  }
+  // Only warn about missing token for protected routes, not login endpoints
+  else if (!config.url.includes('/auth/login') && !config.url.includes('/auth/client_login')) {
+    console.warn('No token found in localStorage for protected route:', config.url);
   }
   return config;
 });
@@ -74,6 +76,14 @@ export const apiService = {
     });
   },
 
+  async changeClientPassword({ current_password, new_password, confirm_password }) {
+    return api.post('/api/clients/change_password.php', {
+      current_password,
+      new_password,
+      confirm_password
+    });
+  },
+
   // Request API methods
   async createRequest(requestData) {
     return api.post('/api/request/create_reservation.php', requestData);
@@ -113,6 +123,18 @@ export const apiService = {
 
   async deleteRequest(requestId) {
     return api.delete('/api/request/delete.php', { data: { id: requestId } });
+  },
+
+  async sendRequestCreationEmail(data) {
+    return api.post('/api/request/send_creation_email.php', data);
+  },
+
+  async sendCalibrationStartEmail(data) {
+    return api.post('/api/calibration/send_start_email.php', data);
+  },
+
+  async sendCalibrationCompletionEmail(data) {
+    return api.post('/api/calibration/send_completion_email.php', data);
   },
 
   async getUsers() {
@@ -280,6 +302,18 @@ export const apiService = {
   async getSampleById(id) {
     return api.get(`/api/sample/read_one.php?id=${id}`);
   },
+
+  // Utility function to check if a request has multiple samples
+  async getSampleCountByReference(referenceNumber) {
+    try {
+      const response = await api.get(`/api/sample/read.php?reference_number=${referenceNumber}`);
+      return response.data?.records?.length || 0;
+    } catch (error) {
+      console.error('Error getting sample count:', error);
+      return 0;
+    }
+  },
+
 
   // Settings API methods
   async getSettings() {

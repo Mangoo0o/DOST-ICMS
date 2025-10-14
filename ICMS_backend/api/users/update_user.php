@@ -17,7 +17,16 @@ require_once __DIR__ . '/../auth/verify_token.php';
 
 try {
     // Verify the token and get user data
-    $userData = verifyToken();
+    $authResult = verifyToken();
+    
+    // Check if token verification was successful
+    if (!$authResult['success']) {
+        http_response_code(401);
+        echo json_encode(array("message" => $authResult['message'] || "Invalid token."));
+        exit();
+    }
+    
+    $userData = $authResult['user'];
     
     // Check if the user is an admin
     if ($userData->role !== 'admin') {
@@ -49,7 +58,13 @@ file_put_contents($logFile, "Decoded data: " . print_r($data, true) . "\n", FILE
 include_once __DIR__ . '/../config/db.php';
 
 // Verify token and get user data
-$user_data = verifyToken();
+$authResult = verifyToken();
+if (!$authResult['success']) {
+    http_response_code(401);
+    echo json_encode(['message' => $authResult['message'] || 'Unauthorized access']);
+    exit();
+}
+$user_data = $authResult['user'];
 file_put_contents($logFile, "User data from token: " . print_r($user_data, true) . "\n", FILE_APPEND);
 
 $database = new Database();
@@ -107,6 +122,44 @@ if(!empty($data->id)) {
     if(isset($data->status)) {
         $update_fields[] = "status = ?";
         $params[] = $data->status ? 1 : 0;
+        
+        // If deactivating a user, store their original password for later restoration
+        if(!$data->status) {
+            // Get the current password to store as original_password
+            $get_password_query = "SELECT password FROM users WHERE id = ?";
+            $get_password_stmt = $db->prepare($get_password_query);
+            $get_password_stmt->execute([$data->id]);
+            $current_password = $get_password_stmt->fetchColumn();
+            
+            if($current_password) {
+                file_put_contents($logFile, "Storing original password for deactivated user ID: " . $data->id . "\n", FILE_APPEND);
+                $update_fields[] = "original_password = ?";
+                $params[] = $current_password;
+                
+                // Change password to invalidate tokens
+                $invalidate_password = password_hash(bin2hex(random_bytes(32)), PASSWORD_BCRYPT);
+                $update_fields[] = "password = ?";
+                $params[] = $invalidate_password;
+            }
+        }
+        
+        // If reactivating any user, restore their original password if available
+        if($data->status) {
+            // Check if this user has an original_password stored (was previously deactivated)
+            $check_original_query = "SELECT original_password FROM users WHERE id = ? AND original_password IS NOT NULL";
+            $check_original_stmt = $db->prepare($check_original_query);
+            $check_original_stmt->execute([$data->id]);
+            $original_password = $check_original_stmt->fetchColumn();
+            
+            if($original_password) {
+                file_put_contents($logFile, "Restoring original password for user ID: " . $data->id . "\n", FILE_APPEND);
+                $update_fields[] = "password = ?";
+                $params[] = $original_password;
+                
+                // Clear the original_password field
+                $update_fields[] = "original_password = NULL";
+            }
+        }
     }
 
     file_put_contents($logFile, "Update fields: " . implode(", ", $update_fields) . "\n", FILE_APPEND);
