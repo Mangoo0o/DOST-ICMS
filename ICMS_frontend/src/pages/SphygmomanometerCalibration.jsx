@@ -113,9 +113,6 @@ function SphygmomanometerCalibration() {
   const mmHgToKPa = (mmHg) => (mmHg === '' || isNaN(Number(mmHg))) ? '' : Number((Number(mmHg) / KPA_TO_MMHG).toFixed(6));
   const formatDec = (v, d = 6) => (v === '' || v === null || typeof v === 'undefined' || isNaN(Number(v))) ? '' : Number(v).toFixed(d);
   // Expanded Uncertainty config
-  const MPE_MM_HG = 4; // per requirement and existing UI notes (±4 mmHg)
-  const COVERAGE_K = 2; // k = 2 for ~95% CL
-  const UNCERTAINTY_THRESHOLD = Number((MPE_MM_HG / 3).toFixed(2)); // U must be <= MPE/3
   const [appliedPressures, setAppliedPressures] = useState([0,50,100,150,200,250,300]);
   // IPRT (Standard) readings X1..X4 (up/down alternation)
   const empty7x4 = appliedPressures.map(() => ({ X1:"", X2:"", X3:"", X4:"" }));
@@ -182,12 +179,8 @@ function SphygmomanometerCalibration() {
     return Number((Number(s) / Math.sqrt(valuesCount)).toFixed(6));
   });
   const expandedUncertaintyU = standardUncertainty.map(u => u === '' ? '' : Number((Number(u) * COVERAGE_K).toFixed(2)));
-  const perPointPassU = expandedUncertaintyU.map(u => u === '' ? '' : (Number(u) <= UNCERTAINTY_THRESHOLD));
-  const overallUncertaintyPass = (() => {
-    const usable = perPointPassU.filter(v => v !== '');
-    if (usable.length === 0) return '';
-    return usable.every(Boolean);
-  })();
+  const perPointPassU = expandedUncertaintyU.map(u => u === '' ? '' : u);
+  const overallUncertaintyPass = '';  // Remove pass/fail logic
   // Pressure loss section (mmHg)
   const [lossPressures] = useState([60,120,180,240,300]);
   const [lossFirst, setLossFirst] = useState(["","","","",""]);
@@ -206,7 +199,7 @@ function SphygmomanometerCalibration() {
   const rapidPass = (() => {
     const t = Number(rapidElapsedSeconds);
     if (isNaN(t) || rapidElapsedSeconds === '') return '';
-    return t < 10 ? 'PASS' : 'FAIL';
+    return t;  // Just return the time value
   })();
 
   // Removed legacy matrix helpers (avg/computeU) not used by Excel DKD tables
@@ -976,11 +969,8 @@ function SphygmomanometerCalibration() {
                 <div>
                   <div className="flex items-center justify-between p-3 rounded border bg-gray-50">
                     <div className="text-sm">
-                      <div className="font-semibold">Uncertainty Validation (k = {COVERAGE_K}, MPE = ±{MPE_MM_HG} mmHg)</div>
-                      <div className="text-gray-600">Requirement: expanded uncertainty U ≤ MPE/3 ({UNCERTAINTY_THRESHOLD} mmHg)</div>
-                    </div>
-                    <div className={`${overallUncertaintyPass === '' ? 'text-gray-500 bg-gray-100' : overallUncertaintyPass ? 'text-green-700 bg-green-100' : 'text-red-700 bg-red-100'} px-3 py-1 rounded font-semibold`}>
-                      {overallUncertaintyPass === '' ? 'INCOMPLETE' : overallUncertaintyPass ? 'PASS' : 'FAIL'}
+                      <div className="font-semibold">Uncertainty Results</div>
+                      <div className="text-gray-600">Expanded uncertainty calculations per pressure point</div>
                     </div>
                   </div>
                   <div className="mt-2 flex items-center gap-2">
@@ -1000,7 +990,7 @@ function SphygmomanometerCalibration() {
 
               <div className="md:col-span-2">
                 <div className="font-semibold mb-1">Rapid Exhaust Valve Test</div>
-                <div className="text-sm">Drop from {rapidStartPressure} → ≤{rapidEndPressure} mmHg in {'<'} 10 s: {rapidPass || '—'}</div>
+                <div className="text-sm">Drop from {rapidStartPressure} → ≤{rapidEndPressure} mmHg in {'<'} 10 s: {rapidElapsedSeconds || '—'} s</div>
               </div>
             </div>
           </CardSection>
@@ -1131,8 +1121,7 @@ function SphygmomanometerCalibration() {
                     <th className="border p-1">Applied (mmHg)</th>
                     <th className="border p-1">Std Dev (s)</th>
                     <th className="border p-1">Std Unc (u)</th>
-                    <th className="border p-1">Expanded U (k·u)</th>
-                    <th className="border p-1">Meets U ≤ MPE/3</th>
+                    <th className="border p-1">Expanded U</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1142,9 +1131,6 @@ function SphygmomanometerCalibration() {
                       <td className="border p-1 text-center">{stdDevUUT[idx]!==''? formatDec(stdDevUUT[idx], 3): ''}</td>
                       <td className="border p-1 text-center">{standardUncertainty[idx]!==''? formatDec(standardUncertainty[idx], 3): ''}</td>
                       <td className="border p-1 text-center">{expandedUncertaintyU[idx]!==''? formatDec(expandedUncertaintyU[idx], 2): ''}</td>
-                      <td className={`border p-1 text-center ${perPointPassU[idx] === '' ? '' : perPointPassU[idx] ? 'text-green-700' : 'text-red-700'}`}>
-                        {perPointPassU[idx] === '' ? '—' : perPointPassU[idx] ? 'PASS' : 'FAIL'}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
