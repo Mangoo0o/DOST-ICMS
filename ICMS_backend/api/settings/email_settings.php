@@ -11,7 +11,13 @@ header('Content-Type: application/json');
 
 // Verify authentication
 require_once __DIR__ . '/../auth/verify_token.php';
-$user_data = verifyToken();
+$authResult = verifyToken();
+if (!$authResult['success']) {
+    http_response_code(401);
+    echo json_encode(['message' => $authResult['message'] || 'Unauthorized access']);
+    exit();
+}
+$user_data = $authResult['user'];
 
 $db = new Database();
 $pdo = $db->getConnection();
@@ -77,20 +83,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $settings['smtp_host'] = 'smtp.gmail.com';
     
     // Validate required fields
-    $requiredFields = ['email_enabled', 'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'from_email', 'from_name'];
+    $requiredFields = ['email_enabled', 'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password'];
     foreach ($requiredFields as $field) {
         if (!isset($settings[$field])) {
             http_response_code(400);
             echo json_encode(['message' => "Required field '{$field}' is missing", 'received_settings' => array_keys($settings)]);
             exit();
         }
-    }
-    
-    // Validate email addresses
-    if (!filter_var($settings['from_email'], FILTER_VALIDATE_EMAIL)) {
-        http_response_code(400);
-        echo json_encode(['message' => 'Invalid from email address']);
-        exit();
     }
     
     // Enforce and validate SMTP port (hardcoded to 587)

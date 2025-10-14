@@ -9,9 +9,7 @@ use \Firebase\JWT\Key;
 function verifyToken() {
     $headers = getallheaders();
     if (!isset($headers['Authorization'])) {
-        http_response_code(401);
-        echo json_encode(array("message" => "No token provided."));
-        exit();
+        return ['success' => false, 'message' => 'No token provided.'];
     }
 
     $jwt = str_replace('Bearer ', '', $headers['Authorization']);
@@ -21,11 +19,9 @@ function verifyToken() {
         // Add leeway to allow for clock skew (e.g., 60 seconds)
         JWT::$leeway = 60;
         $decoded = JWT::decode($jwt, new Key($secret_key, 'HS256'));
-        return $decoded->data;
+        return ['success' => true, 'user' => $decoded->data];
     } catch(Exception $e) {
-        http_response_code(401);
-        echo json_encode(array("message" => "Invalid token."));
-        exit();
+        return ['success' => false, 'message' => 'Invalid token.'];
     }
 }
 ?> 

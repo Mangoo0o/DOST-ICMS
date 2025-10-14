@@ -73,40 +73,64 @@ export const AuthProvider = ({ children }) => {
       // First try user login
       try {
         const response = await apiService.loginUser(credentials);
-        // Store user data from the response
-        const userData = {
-          id: response.data.id,
-          email: response.data.email,
-          role: response.data.role,
-          first_name: response.data.first_name,
-          last_name: response.data.last_name,
-          full_name: response.data.full_name
-        };
-        setUser(userData);
-        setIsAuthenticated(true);
-        localStorage.setItem('token', response.data.jwt);
-        return userData;
+        console.log('User login response:', response.data);
+        
+        // Check if login was successful
+        if (response.data && response.data.jwt) {
+          // Store user data from the response
+          const userData = {
+            id: response.data.id || response.data.data?.id,
+            email: response.data.email || response.data.data?.email,
+            role: response.data.role || response.data.data?.role,
+            first_name: response.data.first_name || response.data.data?.first_name,
+            last_name: response.data.last_name || response.data.data?.last_name,
+            full_name: response.data.full_name || response.data.data?.full_name,
+            require_password_change: !!response.data.require_password_change
+          };
+          setUser(userData);
+          setIsAuthenticated(true);
+          localStorage.setItem('token', response.data.jwt);
+          return userData;
+        } else {
+          throw new Error(response.data?.message || 'Login failed');
+        }
       } catch (userError) {
+        console.log('User login failed, trying client login:', userError.response?.data?.message);
+        
         // If user login fails, try client login
-        const clientResponse = await apiService.clientLogin(credentials);
-        // Store client data from the response
-        const clientData = {
-          id: clientResponse.data.id,
-          email: clientResponse.data.email,
-          role: clientResponse.data.role,
-          first_name: clientResponse.data.first_name,
-          last_name: clientResponse.data.last_name,
-          full_name: clientResponse.data.full_name,
-          client_id: clientResponse.data.client_id
-        };
-        setUser(clientData);
-        setIsAuthenticated(true);
-        localStorage.setItem('token', clientResponse.data.jwt);
-        return clientData;
+        try {
+          const clientResponse = await apiService.clientLogin(credentials);
+          console.log('Client login response:', clientResponse.data);
+          
+          // Check if client login was successful
+          if (clientResponse.data && clientResponse.data.jwt) {
+            // Store client data from the response
+            const clientData = {
+              id: clientResponse.data.id || clientResponse.data.data?.id,
+              email: clientResponse.data.email || clientResponse.data.data?.email,
+              role: clientResponse.data.role || clientResponse.data.data?.role,
+              first_name: clientResponse.data.first_name || clientResponse.data.data?.first_name,
+              last_name: clientResponse.data.last_name || clientResponse.data.data?.last_name,
+              full_name: clientResponse.data.full_name || clientResponse.data.data?.full_name,
+              client_id: clientResponse.data.client_id || clientResponse.data.data?.id,
+              require_password_change: !!clientResponse.data.require_password_change
+            };
+            setUser(clientData);
+            setIsAuthenticated(true);
+            localStorage.setItem('token', clientResponse.data.jwt);
+            return clientData;
+          } else {
+            throw new Error(clientResponse.data?.message || 'Client login failed');
+          }
+        } catch (clientError) {
+          console.log('Client login also failed:', clientError.response?.data?.message);
+          throw clientError;
+        }
       }
     } catch (error) {
+      console.error('Login error:', error);
       // Extract the error message from the response
-      const errorMessage = error.response?.data?.message || 'Login failed. Please try again.';
+      const errorMessage = error.response?.data?.message || error.message || 'Login failed. Please try again.';
       throw new Error(errorMessage);
     }
   };

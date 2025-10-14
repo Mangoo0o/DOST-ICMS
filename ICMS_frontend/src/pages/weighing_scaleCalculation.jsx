@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MdScience, MdCalculate, MdInfo, MdOutlineDeviceHub } from 'react-icons/md';
+import { MdScience, MdCalculate, MdInfo, MdOutlineDeviceHub, MdWarning } from 'react-icons/md';
 import { FaBalanceScale } from 'react-icons/fa';
 import { Toaster, toast } from 'react-hot-toast';
 import './uncertainty-print.css';
@@ -12,6 +12,7 @@ import testWeights from '../data/test_weights.json';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { useBackNavigation } from '../hooks/useBackNavigation';
 import { useAutoSave, usePageRefreshDetection } from '../hooks/useAutoSave';
+import { dispatchCalibrationCompletionNotification } from '../utils/calibrationNotifications';
 
 // Custom hook for input navigation
 const useInputNavigation = () => {
@@ -157,6 +158,12 @@ const modernInput = (props) => {
   const { handleKeyDown: navigationHandler } = useInputNavigation();
 
   const handleKeyDown = (e) => {
+    // Prevent E, e, +, - characters in number inputs to avoid scientific notation
+    if (props.type === 'number' && ['e', 'E', '+', '-'].includes(e.key)) {
+      e.preventDefault();
+      return;
+    }
+    
     navigationHandler(e, props.onKeyDown);
   };
 
@@ -235,6 +242,7 @@ function WeighingScaleCalculation() {
   });
   const [sampleId, setSampleId] = useState(passedSampleId);
   const [sampleDataLoaded, setSampleDataLoaded] = useState(false);
+  const [sampleData, setSampleData] = useState(null);
 
   useEffect(() => {
     if (passedSampleId) {
@@ -258,6 +266,7 @@ function WeighingScaleCalculation() {
           weightLastCal: eq.weight_last_cal || '',
         }));
         setSampleId(eq.id || null);
+        setSampleData(eq); // Store sample data for reference number access
         setSampleDataLoaded(true);
       });
     } else if (passedSerialNumber) {
@@ -281,6 +290,7 @@ function WeighingScaleCalculation() {
           weightLastCal: eq.weight_last_cal || '',
         }));
         setSampleId(eq.id || null);
+        setSampleData(eq); // Store sample data for reference number access
         setSampleDataLoaded(true);
       });
     } else {
@@ -1617,8 +1627,10 @@ const u_rep_all = stddevRepeat;
       toast.success('Calibration record saved!');
       setHasUnsavedChanges(false);
       
-      // Trigger notification update for clients
-      window.dispatchEvent(new CustomEvent('calibration-completed'));
+      // Trigger smart notification update for clients (only if multiple samples)
+      if (sampleData?.reservation_ref_no) {
+        await dispatchCalibrationCompletionNotification(sampleData.reservation_ref_no, sampleId, 'Weighing Scale');
+      }
       
       return true; // Return true on success
     } catch (e) {
@@ -1740,6 +1752,8 @@ const u_rep_all = stddevRepeat;
       console.error('No sampleId provided for calibration confirmation');
       return;
     }
+    
+    setIsCalibrationLoading(true);
     try {
       console.log('Calling updateSampleStatus with sampleId:', sampleId, 'status: completed');
       const response = await apiService.updateSampleStatus(sampleId, 'completed');
@@ -1749,8 +1763,10 @@ const u_rep_all = stddevRepeat;
       clearBackup();
       toast.success('Equipment status set to completed. Request will be automatically completed when all samples are finished.');
       
-      // Trigger notification update for clients
-      window.dispatchEvent(new CustomEvent('calibration-completed'));
+      // Trigger smart notification update for clients (only if multiple samples)
+      if (sampleData?.reservation_ref_no) {
+        await dispatchCalibrationCompletionNotification(sampleData.reservation_ref_no, sampleId, 'Weighing Scale');
+      }
       
       // Navigate back to calibration page after successful confirmation
       setTimeout(() => {
@@ -1762,6 +1778,8 @@ const u_rep_all = stddevRepeat;
       console.error('Failed to update sample status:', e);
       toast.error('Failed to update sample status: ' + (e.message || 'Unknown error'));
       return false; // Return false instead of throwing
+    } finally {
+      setIsCalibrationLoading(false);
     }
   };
 
@@ -1831,13 +1849,87 @@ const u_rep_all = stddevRepeat;
 
   return (
     <div className="bg-gray-100 min-h-screen p-4">
-      <Toaster position="top-right" />
+      {/* Loading Screen Overlay for Calibration Completion */}
+      {isCalibrationLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100]">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 text-center">
+            <div className="mb-6">
+              <svg className="animate-spin h-16 w-16 text-[#2a9dab] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Completing Calibration</h3>
+            <p className="text-gray-600 mb-4">Please wait while we finalize your calibration...</p>
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="bg-[#2a9dab] h-2 rounded-full animate-pulse" style={{
+                width: '80%',
+                animation: 'progressBar 2s ease-in-out infinite'
+              }}></div>
+            </div>
+            <style jsx>{`
+              @keyframes progressBar {
+                0% { width: 0%; }
+                50% { width: 80%; }
+                100% { width: 0%; }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
+
+      <Toaster 
+        position="top-center"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: '#363636',
+            color: '#fff',
+            padding: '20px 24px',
+            borderRadius: '12px',
+            fontSize: '16px',
+            fontWeight: '500',
+            minWidth: '400px',
+            textAlign: 'center',
+            boxShadow: '0 8px 16px rgba(0, 0, 0, 0.15)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+          },
+          success: {
+            style: {
+              background: '#10B981',
+              color: '#fff',
+              padding: '20px 24px',
+              borderRadius: '12px',
+              fontSize: '16px',
+              fontWeight: '500',
+              minWidth: '400px',
+              textAlign: 'center',
+              boxShadow: '0 8px 16px rgba(16, 185, 129, 0.3)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+            },
+          },
+          error: {
+            style: {
+              background: '#EF4444',
+              color: '#fff',
+              padding: '20px 24px',
+              borderRadius: '12px',
+              fontSize: '16px',
+              fontWeight: '500',
+              minWidth: '400px',
+              textAlign: 'center',
+              boxShadow: '0 8px 16px rgba(239, 68, 68, 0.3)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+            },
+          },
+        }}
+      />
       <div className="w-full mx-auto">
         <div className="bg-white p-8 rounded-lg shadow-md w-full mb-8 border border-blue-100 relative">
           {/* Close (X) Button */}
           <button
             onClick={() => setShowSimpleCloseConfirm(true)}
-            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-lg h-8 w-8 flex items-center justify-center rounded hover:bg-gray-200 transition-colors"
+            className="absolute top-4 right-4 text-gray-700 hover:text-gray-900 text-xl h-10 w-10 flex items-center justify-center rounded transition-colors font-bold"
             title="Close"
             aria-label="Close"
           >
@@ -1867,11 +1959,19 @@ const u_rep_all = stddevRepeat;
                           !equipment.minCapacity || !equipment.readability) {
                         toast.error('Please fill in all essential sample fields (Make/Model, Max Capacity, Min Capacity, Readability) before proceeding.', {
                           position: 'top-center',
-                          duration: 4000,
+                          duration: 5000,
                           style: {
                             textAlign: 'center',
-                            fontSize: '14px',
-                            fontWeight: '500'
+                            fontSize: '18px',
+                            fontWeight: '600',
+                            padding: '20px 32px',
+                            minWidth: '450px',
+                            backgroundColor: '#fef2f2',
+                            color: '#000000',
+                            border: '2px solid #fecaca',
+                            borderRadius: '12px',
+                            boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                            backdropFilter: 'blur(8px)'
                           }
                         });
                         return;
@@ -1958,11 +2058,19 @@ const u_rep_all = stddevRepeat;
                         !equipment.minCapacity || !equipment.readability) {
                       toast.error('Please complete all essential sample fields (Make/Model, Max Capacity, Min Capacity, Readability) before confirming.', {
                         position: 'top-center',
-                        duration: 4000,
+                        duration: 5000,
                         style: {
                           textAlign: 'center',
-                          fontSize: '14px',
-                          fontWeight: '500'
+                          fontSize: '18px',
+                          fontWeight: '600',
+                          padding: '20px 32px',
+                          minWidth: '450px',
+                          backgroundColor: '#fef2f2',
+                          color: '#dc2626',
+                          border: '2px solid #fecaca',
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                          backdropFilter: 'blur(8px)'
                         }
                       });
                       return;
@@ -2007,51 +2115,61 @@ const u_rep_all = stddevRepeat;
 
       {/* Simple Close Confirmation Modal (for X button) */}
       {showSimpleCloseConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-lg p-6 w-96">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Confirm Cancellation</h2>
-            <p className="text-gray-600 mb-6">Are you sure you want to cancel the calibration?</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setShowSimpleCloseConfirm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">Cancel</button>
-              <button onClick={() => { setShowSimpleCloseConfirm(false); handleConfirmBack(); }} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">Confirm</button>
+        <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-2xl p-6 w-96 shadow-2xl border border-gray-100">
+            <div className="flex items-start">
+              <div className="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-br from-red-50 to-rose-100 border-2 border-red-200">
+                <MdWarning className="w-6 h-6 text-red-500" />
+              </div>
+              <div className="ml-4 flex-1">
+                <h2 className="text-lg font-semibold text-gray-900 leading-6">Confirm Cancellation</h2>
+                <p className="text-sm text-gray-600 leading-relaxed mt-2">Are you sure you want to cancel the calibration?</p>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Next Step Confirmation Modal (simple) */}
-      {showNextConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-lg p-6 w-96">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">{nextConfirmTitle}</h2>
-            <p className="text-gray-600 mb-6">{nextConfirmMessage}</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setShowNextConfirm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">Cancel</button>
-              <button
-                onClick={async () => {
-                  try {
-                    setIsNextSaving(true);
-                    const ok = await handleAutoSave();
-                    if (ok) {
-                      toast.success('Progress saved.');
-                      setShowNextConfirm(false);
-                      setCurrentStep((s) => Math.min(7, s + 1));
-                    } else {
-                      toast.error('Failed to save progress.');
-                    }
-                  } finally {
-                    setIsNextSaving(false);
-                  }
-                }}
-                disabled={isNextSaving}
-                className={`px-4 py-2 text-white rounded-lg font-medium ${isNextSaving ? 'bg-red-400' : 'bg-red-600 hover:bg-red-700'}`}
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
+              <button 
+                onClick={() => setShowSimpleCloseConfirm(false)} 
+                className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold"
               >
-                {isNextSaving ? 'Saving…' : 'Save & Continue'}
+                Cancel
+              </button>
+              <button 
+                onClick={() => { setShowSimpleCloseConfirm(false); handleConfirmBack(); }} 
+                className="px-6 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold shadow-lg"
+              >
+                Confirm
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Next Step Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showNextConfirm}
+        onClose={() => setShowNextConfirm(false)}
+        onConfirm={async () => {
+          try {
+            setIsNextSaving(true);
+            const ok = await handleAutoSave();
+            if (ok) {
+              toast.success('Progress saved.');
+              setShowNextConfirm(false);
+              setCurrentStep((s) => Math.min(7, s + 1));
+            } else {
+              toast.error('Failed to save progress.');
+            }
+          } finally {
+            setIsNextSaving(false);
+          }
+        }}
+        title={nextConfirmTitle}
+        message={nextConfirmMessage}
+        type={nextConfirmType}
+        confirmText="Save & Continue"
+        cancelText="Stay Here"
+        isLoading={isNextSaving}
+      />
     </div>
   );
 }

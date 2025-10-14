@@ -6,6 +6,8 @@ import { useAuth } from '../context/AuthContext';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import '../pages/custom-datepicker.css';
+import ConfirmationModal from '../components/ConfirmationModal';
+import { samplePricingService } from '../utils/samplePricing';
 // import { getProvinces, getCities, getBarangays } from '../data/philippineLocations';
 
 const getStatusBadge = (status) => {
@@ -129,15 +131,31 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
   const [isExpectedCompletionManuallySet, setIsExpectedCompletionManuallySet] = useState(false);
   const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false);
   const [isSubmitConfirmOpen, setIsSubmitConfirmOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Auto-set expected completion date to 1 week from scheduled date
+  // Auto-set expected completion date to 5 days from scheduled date
   useEffect(() => {
     if (scheduledDate && !isExpectedCompletionManuallySet) {
-      const oneWeekLater = new Date(scheduledDate);
-      oneWeekLater.setDate(oneWeekLater.getDate() + 7);
-      setExpectedCompletionDate(oneWeekLater);
+      const fiveDaysLater = new Date(scheduledDate);
+      fiveDaysLater.setDate(fiveDaysLater.getDate() + 5);
+      setExpectedCompletionDate(fiveDaysLater);
     }
   }, [scheduledDate, isExpectedCompletionManuallySet]);
+
+  // Load sample pricing data when component mounts
+  useEffect(() => {
+    const loadPricingData = async () => {
+      try {
+        await samplePricingService.getAllPricing();
+      } catch (error) {
+        console.error('Failed to load sample pricing data:', error);
+      }
+    };
+    
+    if (isOpen) {
+      loadPricingData();
+    }
+  }, [isOpen]);
 
   // --- Equipment Options ---
   const sectionOptions = [
@@ -222,90 +240,15 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
         return updated;
       }
       
-      // Pricing logic for different sample types
+      // Dynamic pricing logic for different sample types
       if (field === 'type') {
-        // Weighing Scale pricing
-        if (updated.section === 'Weighing Scale') {
-          switch (value) {
-            case 'Special Accuracy I (Nawi)':
-              updated.basePrice = 1200;
-              break;
-            case 'High Accuracy II (Nawi)':
-              updated.basePrice = 1000;
-              break;
-            case 'Medium Accuracy III (Nawi)':
-              updated.basePrice = 900;
-              break;
-            case 'Ordinary III (Nawi)':
-              updated.basePrice = 280;
-              break;
-            case 'Weighing Scale Ordinary III (platform balance)':
-              updated.basePrice = 540;
-              break;
-            default:
-              updated.basePrice = '';
-          }
-        }
-        // Test-Weights pricing
-        else if (updated.section === 'Test-Weights') {
-          switch (value) {
-            case '1 kg to 10 kg (OIML Class F2)':
-              updated.basePrice = 600;
-              break;
-            case '10 kg to 20 kg (OIML Class F2)':
-              updated.basePrice = 800;
-              break;
-            case '20 kg to 50 kg (OIML Class F2)':
-              updated.basePrice = 1000;
-              break;
-            case 'up to 5 kg (OIML Class M1/M2/M3)':
-              updated.basePrice = 450;
-              break;
-            case '10 kg to 20 kg (OIML Class M1/M2/M3)':
-              updated.basePrice = 600;
-              break;
-            case '25 kg to 50 kg (OIML Class M1/M2/M3)':
-              updated.basePrice = 700;
-              break;
-            default:
-              updated.basePrice = '';
-          }
-        }
-        // Thermometer pricing
-        else if (updated.section === 'Thermometer') {
-          switch (value) {
-            case '-20°C to +80°C (Digital Thermometer)':
-              updated.basePrice = 1700;
-              break;
-            case '-30°C to +100°C (Wall / Refrigerator / Bimetallic Thermometer)':
-              updated.basePrice = 1020;
-              break;
-            case '0°C to 45°C (Room, Max & Min Liquid, Thermograph Dial Type & Electronics)':
-              updated.basePrice = 425;
-              break;
-            default:
-              updated.basePrice = '';
-          }
-        }
-        // Sphygmomanometer pricing
-        else if (updated.section === 'Sphygmomanometer') {
-          switch (value) {
-            case '0 bar to 1 bar mmHg to 750 mmHg':
-              updated.basePrice = 1300;
-              break;
-            default:
-              updated.basePrice = '';
-          }
-        }
-        // Thermohygrometer pricing
-        else if (updated.section === 'Thermohygrometer') {
-          switch (value) {
-            case '0-100% Rh, 0-100°C (Electronic and Dial Thermohygrometer)':
-              updated.basePrice = 1550;
-              break;
-            default:
-              updated.basePrice = '';
-          }
+        // Get pricing from cache or fallback to hardcoded values
+        const pricing = samplePricingService.getPricingWithFallback(updated.section, value);
+        
+        if (pricing && pricing.isActive) {
+          updated.basePrice = pricing.basePrice;
+        } else {
+          updated.basePrice = '';
         }
         
         // Calculate total price
@@ -408,6 +351,7 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
       toast.error(`Duplicate serial numbers found: ${Array.from(duplicates).join(', ')}`);
       return;
     }
+    setIsSubmitting(true);
     try {
       const addressString = [barangay, city, province].filter(Boolean).join(', ');
       const reservationData = {
@@ -443,6 +387,18 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
           }
         }
       }
+      
+      // Send email notification after all samples are created
+      try {
+        await apiService.sendRequestCreationEmail({
+          reference_number: referenceNumber
+        });
+        console.log('Email notification sent successfully');
+      } catch (emailError) {
+        console.log('Email notification failed:', emailError);
+        // Don't fail the entire request if email fails
+      }
+      
       toast.success('Request submitted successfully');
       setIsExpectedCompletionManuallySet(false);
       onClose();
@@ -452,18 +408,27 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
       } else {
         toast.error('Failed to submit request. Please try again.');
       }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // --- Submit Confirmation ---
-  const handleSubmitAttempt = () => setIsSubmitConfirmOpen(true);
+  const handleSubmitAttempt = () => {
+    console.log('Submit button clicked');
+    setIsSubmitConfirmOpen(true);
+  };
   const handleConfirmSubmit = () => {
+    console.log('Confirm submit clicked');
     setIsSubmitConfirmOpen(false);
     handleSubmit();
   };
 
   // --- Cancel Modal ---
-  const handleAttemptClose = () => setIsCancelConfirmOpen(true);
+  const handleAttemptClose = () => {
+    console.log('Cancel button clicked');
+    setIsCancelConfirmOpen(true);
+  };
   const handleConfirmClose = () => {
     setEquipments([{ id: Date.now(), section: '', type: '', range: '', serialNo: '', serialNumbers: [''], qty: 1, price: '0.00', basePrice: '' }]);
     setScheduledDate(new Date());
@@ -478,30 +443,57 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
   // --- UI ---
   return (
     <>
-      {isCancelConfirmOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-lg p-6 w-96">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Cancel Request?</h2>
-            <p className="text-gray-600 mb-6">Are you sure you want to cancel this reservation?</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setIsCancelConfirmOpen(false)} className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium">No</button>
-              <button onClick={handleConfirmClose} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">Yes, Cancel</button>
+      {/* Loading Screen Overlay */}
+      {isSubmitting && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100]">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 text-center">
+            <div className="mb-6">
+              <svg className="animate-spin h-16 w-16 text-[#2a9dab] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
             </div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Submitting Request</h3>
+            <p className="text-gray-600 mb-4">Please wait while we process your request...</p>
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="bg-[#2a9dab] h-2 rounded-full animate-pulse" style={{
+                width: '60%',
+                animation: 'progressBar 2s ease-in-out infinite'
+              }}></div>
+            </div>
+            <style jsx>{`
+              @keyframes progressBar {
+                0% { width: 0%; }
+                50% { width: 60%; }
+                100% { width: 0%; }
+              }
+            `}</style>
           </div>
         </div>
       )}
-      {isSubmitConfirmOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-lg p-6 w-96">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Submit Request?</h2>
-            <p className="text-gray-600 mb-6">Are you sure you want to submit this calibration request?</p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setIsSubmitConfirmOpen(false)} className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium">No</button>
-              <button onClick={handleConfirmSubmit} className="px-4 py-2 bg-[#2a9dab] text-white rounded-lg hover:bg-[#217a8c] font-medium">Yes, Submit</button>
-            </div>
-          </div>
-        </div>
-      )}
+
+      <ConfirmationModal
+        isOpen={isCancelConfirmOpen}
+        onClose={() => setIsCancelConfirmOpen(false)}
+        onConfirm={handleConfirmClose}
+        title="Cancel Request?"
+        message="Are you sure you want to cancel this reservation?"
+        type="warning"
+        confirmText="Yes, Cancel"
+        cancelText="No"
+        zIndex="z-[60]"
+      />
+      <ConfirmationModal
+        isOpen={isSubmitConfirmOpen}
+        onClose={() => setIsSubmitConfirmOpen(false)}
+        onConfirm={handleConfirmSubmit}
+        title="Submit Request?"
+        message="Are you sure you want to submit this calibration request?"
+        type="info"
+        confirmText="Yes, Submit"
+        cancelText="No"
+        zIndex="z-[60]"
+      />
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-7xl max-h-[90vh] font-sans flex flex-col justify-center border border-gray-200 overflow-y-auto">
           <div className="flex justify-between items-center mb-6">
@@ -779,13 +771,23 @@ const AddRequestModal = ({ isOpen, onClose, user }) => {
               Total Fee: <span className="text-2xl font-bold text-[#2a9dab]">₱ {totalPrice.toLocaleString()}</span>
             </div>
             <div className="flex gap-4">
-              <button onClick={handleAttemptClose} className="px-4 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>
+              <button onClick={handleAttemptClose} className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold">Cancel</button>
               <button
                 onClick={handleSubmitAttempt}
-                disabled={isLoadingClient || !clientInfo}
-                className="px-4 py-2 bg-[#2a9dab] text-white rounded-lg hover:bg-[#217a8c] disabled:bg-gray-400"
+                disabled={isLoadingClient || !clientInfo || isSubmitting}
+                className="px-4 py-2 bg-[#2a9dab] text-white rounded-lg hover:bg-[#217a8c] disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                Submit Request
+                {isSubmitting ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Submitting...
+                  </>
+                ) : (
+                  'Submit Request'
+                )}
               </button>
             </div>
           </div>

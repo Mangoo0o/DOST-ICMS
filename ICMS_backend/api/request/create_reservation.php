@@ -79,6 +79,8 @@ try {
     //     throw new Exception('SQL error (transaction insert): ' . implode(' | ', $stmt->errorInfo()));
     // }
 
+    // Email notification will be sent by frontend after samples are created
+
     $db->commit();
 
     // Log transaction (best-effort)

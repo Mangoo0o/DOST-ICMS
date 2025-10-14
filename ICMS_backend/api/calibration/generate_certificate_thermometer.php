@@ -124,7 +124,7 @@ $input_data = json_decode($record['input_data'], true);
 $result_data = isset($record['result_data']) ? json_decode($record['result_data'], true) : [];
 
 // Fetch calibrator details - get the actual person who calibrated it
-$calibrator_name = 'MA. FERNANDA I BANDA'; // Default fallback
+$calibrator_name = ''; // Will be set from database
 $calibrator_title = 'Calibration Engineer';
 
 if ($record['calibrated_by']) {
@@ -267,18 +267,35 @@ $pdf->SetFont('Arial', '', 10);
 $pdf->MultiCell(0, 5, 'This certifies that the above THERMOMETER/ SENSOR was calibrated by the Regional Metrology Laboratory at Government Center, Sevilla, City of San Fernando, La Union under the following environmental conditions:');
 $pdf->Ln(8);
 
-// Environmental Conditions Table
+// Environmental Conditions Table - Fetch from database
+$env_temp = '23.0'; // Default fallback
+$env_humidity = '50'; // Default fallback
+
+if (isset($input_data['envConditions'])) {
+    $env_conditions = $input_data['envConditions'];
+    if (isset($env_conditions['avgTemp'])) {
+        $env_temp = number_format($env_conditions['avgTemp'], 1);
+    } elseif (isset($env_conditions['startTemp'])) {
+        $env_temp = number_format($env_conditions['startTemp'], 1);
+    }
+    if (isset($env_conditions['avgHumidity'])) {
+        $env_humidity = number_format($env_conditions['avgHumidity'], 0);
+    } elseif (isset($env_conditions['startHumidity'])) {
+        $env_humidity = number_format($env_conditions['startHumidity'], 0);
+    }
+}
+
 $pdf->SetFont('Arial', 'B', 9);
 $pdf->Cell(60, 10, 'Ambient Temperature (' . chr(176) . 'C)', 1, 0, 'C');
 $pdf->SetFont('Arial', '', 9);
-$pdf->Cell(60, 10, '23.0' . chr(176) . 'C', 1, 1, 'C');
+$pdf->Cell(60, 10, $env_temp . chr(176) . 'C', 1, 1, 'C');
 $pdf->SetFont('Arial', 'B', 9);
 $pdf->Cell(60, 10, 'Relative Humidity (%)', 1, 0, 'C');
 $pdf->SetFont('Arial', '', 9);
-$pdf->Cell(60, 10, '50%', 1, 1, 'C');
+$pdf->Cell(60, 10, $env_humidity . '%', 1, 1, 'C');
 $pdf->Ln(8);
 
-// Main Measurement Results Table
+// Main Measurement Results Table - Fetch from database
 $pdf->SetFont('Arial', 'B', 9);
 $colWidths = [45, 45, 45, 45];
 $pdf->Cell($colWidths[0], 8, 'Standard Reading ' . chr(176) . 'C', 1, 0, 'C');
@@ -287,18 +304,80 @@ $pdf->Cell($colWidths[2], 8, 'Correction ' . chr(176) . 'C', 1, 0, 'C');
 $pdf->Cell($colWidths[3], 8, 'Uncertainty of Measurement', 1, 1, 'C');
 
 $pdf->SetFont('Arial', '', 9);
-// Add sample data rows (3 rows as shown in the image)
-$sample_data = [
-    ['0.0', '0.1', '0.1', chr(177) . '0.2'],
-    ['25.0', '25.1', '0.1', chr(177) . '0.2'],
-    ['50.0', '50.2', '0.2', chr(177) . '0.2']
-];
 
-foreach ($sample_data as $row) {
-    $pdf->Cell($colWidths[0], 8, $row[0], 1, 0, 'C');
-    $pdf->Cell($colWidths[1], 8, $row[1], 1, 0, 'C');
-    $pdf->Cell($colWidths[2], 8, $row[2], 1, 0, 'C');
-    $pdf->Cell($colWidths[3], 8, $row[3], 1, 1, 'C');
+// Calculate proper uncertainty using Uc × k formula
+$uc = 0; // Combined Standard Uncertainty
+$k = 2; // Coverage Factor (default)
+$calculated_uncertainty = 0;
+
+// Try to get Uc and k from result_data
+if (isset($result_data['uc']) && is_numeric($result_data['uc'])) {
+    $uc = floatval($result_data['uc']);
+} elseif (isset($result_data['combinedStandardUncertainty']) && is_numeric($result_data['combinedStandardUncertainty'])) {
+    $uc = floatval($result_data['combinedStandardUncertainty']);
+} elseif (isset($result_data['uncertainty']['uc']) && is_numeric($result_data['uncertainty']['uc'])) {
+    $uc = floatval($result_data['uncertainty']['uc']);
+}
+
+if (isset($result_data['k']) && is_numeric($result_data['k'])) {
+    $k = floatval($result_data['k']);
+} elseif (isset($result_data['coverageFactor']) && is_numeric($result_data['coverageFactor'])) {
+    $k = floatval($result_data['coverageFactor']);
+} elseif (isset($result_data['uncertainty']['k']) && is_numeric($result_data['uncertainty']['k'])) {
+    $k = floatval($result_data['uncertainty']['k']);
+}
+
+// Calculate expanded uncertainty: Uc × k
+if ($uc > 0 && $k > 0) {
+    $calculated_uncertainty = $uc * $k;
+}
+
+// Debug logging
+error_log("Thermometer Uncertainty Calculation:");
+error_log("Uc: " . $uc);
+error_log("k: " . $k);
+error_log("Calculated Uncertainty (Uc × k): " . $calculated_uncertainty);
+
+// Fetch measurement data from database
+$measurement_data = [];
+if (isset($input_data['referenceData']) && is_array($input_data['referenceData'])) {
+    foreach ($input_data['referenceData'] as $data_point) {
+        $uncertainty_value = $calculated_uncertainty > 0 ? $calculated_uncertainty : ($data_point['uncertainty'] ?? 0.2);
+        $measurement_data[] = [
+            'standard' => number_format($data_point['temp'], 1),
+            'indicated' => number_format($data_point['indicated'], 1),
+            'correction' => number_format($data_point['correction'], 1),
+            'uncertainty' => number_format($uncertainty_value, 1)
+        ];
+    }
+}
+
+// If no data from database, use default sample data
+if (empty($measurement_data)) {
+    $default_uncertainty = $calculated_uncertainty > 0 ? number_format($calculated_uncertainty, 1) : '0.2';
+    $measurement_data = [
+        ['0.0', '0.1', '0.1', $default_uncertainty],
+        ['25.0', '25.1', '0.1', $default_uncertainty],
+        ['50.0', '50.2', '0.2', $default_uncertainty]
+    ];
+}
+
+foreach ($measurement_data as $row) {
+    if (is_array($row)) {
+        // Handle both array format and associative array format
+        $standard = isset($row['standard']) ? $row['standard'] : $row[0];
+        $indicated = isset($row['indicated']) ? $row['indicated'] : $row[1];
+        $correction = isset($row['correction']) ? $row['correction'] : $row[2];
+        $uncertainty = isset($row['uncertainty']) ? $row['uncertainty'] : $row[3];
+    } else {
+        // Fallback for unexpected format
+        $standard = $indicated = $correction = $uncertainty = 'N/A';
+    }
+    
+    $pdf->Cell($colWidths[0], 8, $standard, 1, 0, 'C');
+    $pdf->Cell($colWidths[1], 8, $indicated, 1, 0, 'C');
+    $pdf->Cell($colWidths[2], 8, $correction, 1, 0, 'C');
+    $pdf->Cell($colWidths[3], 8, $uncertainty, 1, 1, 'C');
 }
 $pdf->Ln(2);
 
@@ -315,24 +394,64 @@ $pdf->SetDrawColor(0, 0, 0);
 $pdf->Line(20, $pdf->GetY(), 190, $pdf->GetY());
 $pdf->Ln(3);
 
-// STANDARDS USED AND TRACEABILITY
+// STANDARDS USED AND TRACEABILITY - Fetch from database
 $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(0, 7, 'STANDARDS USED AND TRACEABILITY', 0, 1, 'L');
 $pdf->Ln(3);
+
 // Table header
 $pdf->SetFont('Arial', 'B', 9);
 $colW = [80, 60, 45];
 $pdf->Cell($colW[0], 8, 'Name of Standard', 1, 0, 'C');
 $pdf->Cell($colW[1], 8, 'Calibration Certificate No.', 1, 0, 'C');
 $pdf->Cell($colW[2], 8, 'Issuing Lab/Traceability', 1, 1, 'C');
-// Table rows for Thermometer
+
+// Fetch standards data from database
+$standards_data = [];
+
+// Try to fetch thermometer-specific standards from standard_gauges table
+try {
+    $standards_stmt = $db->prepare('SELECT * FROM standard_gauges WHERE type LIKE "%Thermometer%" OR type LIKE "%Temperature%" AND is_active = 1 ORDER BY id DESC LIMIT 2');
+    $standards_stmt->execute();
+    $standards_records = $standards_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    // Table doesn't exist or other error, use empty array
+    $standards_records = [];
+}
+
+if (!empty($standards_records)) {
+    foreach ($standards_records as $standard) {
+        $standards_data[] = [
+            'name' => $standard['type'] . ' ' . $standard['model_maker'],
+            'certificate' => $standard['certificate_no'],
+            'traceability' => $standard['traceability']
+        ];
+    }
+}
+
+// If no thermometer standards found, use default thermometer standards
+if (empty($standards_data)) {
+    $standards_data = [
+        [
+            'name' => 'Temperature Readout Isotech TTI-10',
+            'certificate' => '102023-DT-0089',
+            'traceability' => 'NML-Philippines, ITDI'
+        ],
+        [
+            'name' => 'Standard Platinum Resistance Thermometer',
+            'certificate' => '102023-DT-0089',
+            'traceability' => 'NML-Philippines, ITDI'
+        ]
+    ];
+}
+
+// Display standards data
 $pdf->SetFont('Arial', '', 9);
-$pdf->Cell($colW[0], 8, 'Temperature Readout Isotech TTI-10', 1, 0, 'L');
-$pdf->Cell($colW[1], 8, '102023-DT-0089', 1, 0, 'C');
-$pdf->Cell($colW[2], 8, 'NML-Philippines, ITDI', 1, 1, 'C');
-$pdf->Cell($colW[0], 8, 'Standard Platinum Resistance Thermometer', 1, 0, 'L');
-$pdf->Cell($colW[1], 8, '102023-DT-0089', 1, 0, 'C');
-$pdf->Cell($colW[2], 8, 'NML-Philippines, ITDI', 1, 1, 'C');
+foreach ($standards_data as $standard) {
+    $pdf->Cell($colW[0], 8, $standard['name'], 1, 0, 'L');
+    $pdf->Cell($colW[1], 8, $standard['certificate'], 1, 0, 'C');
+    $pdf->Cell($colW[2], 8, $standard['traceability'], 1, 1, 'C');
+}
 $pdf->Ln(8);
 
 // REMARKS

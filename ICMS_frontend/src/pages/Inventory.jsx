@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { FaPlus, FaEdit, FaSearch, FaExclamationTriangle } from 'react-icons/fa';
+import { MdInfo, MdWarning } from 'react-icons/md';
 import { toast, Toaster } from 'react-hot-toast';
 import { apiService } from '../services/api';
 import { motion } from 'framer-motion';
@@ -672,20 +673,27 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, selectedType }) => {
           </div>
         </form>
         {showCancelConfirm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">Are you sure you want to cancel?</h3>
-              <p className="mb-6 text-gray-900 font-normal">Any unsaved changes will be lost.</p>
-              <div className="flex justify-end gap-3">
+          <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-gray-100">
+              <div className="flex items-start">
+                <div className="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-br from-red-50 to-rose-100 border-2 border-red-200">
+                  <MdWarning className="w-6 h-6 text-red-500" />
+                </div>
+                <div className="ml-4 flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 leading-6">Are you sure you want to cancel?</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed mt-2">Any unsaved changes will be lost.</p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
                 <button
                   onClick={() => setShowCancelConfirm(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
+                  className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold"
                 >
                   No, Go Back
                 </button>
                 <button
                   onClick={() => { setShowCancelConfirm(false); onClose(); }}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
+                  className="px-6 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold shadow-lg"
                 >
                   Yes, Cancel
                 </button>
@@ -695,21 +703,28 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, selectedType }) => {
         )}
         {/* Confirmation Modal */}
         {showConfirmation && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 text-center">Confirm New Item</h3>
-              <p className="mb-6 text-gray-900 font-normal">Are you sure you want to add this item?</p>
-              <div className="flex justify-end gap-3">
+          <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-gray-100">
+              <div className="flex items-start">
+                <div className="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-br from-blue-50 to-indigo-100 border-2 border-blue-200">
+                  <MdInfo className="w-6 h-6 text-[#2a9dab]" />
+                </div>
+                <div className="ml-4 flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 leading-6">Confirm New Item</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed mt-2">Are you sure you want to add this item?</p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
                 <button
                   onClick={() => setShowConfirmation(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-red-100 hover:border-red-400 hover:text-red-600"
+                  className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold"
                   disabled={isSubmitting}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleConfirm}
-                  className="px-4 py-2 bg-[#2a9dab] text-white rounded-lg hover:bg-[#2a9dab]/90 focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:ring-offset-2 transition-colors disabled:opacity-50"
+                  className="px-6 py-2.5 bg-[#2a9dab] text-white rounded-xl hover:bg-[#238a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2a9dab] transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? 'Adding...' : 'Confirm'}
@@ -960,13 +975,13 @@ const EditItemModal = ({ isOpen, onClose, onEdit, item, selectedType }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
+    <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-gray-100">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">Edit Item</h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
+            className="text-gray-500 hover:text-gray-700 transition-colors"
           >
             ✕
           </button>
@@ -1397,20 +1412,27 @@ const EditItemModal = ({ isOpen, onClose, onEdit, item, selectedType }) => {
           </div>
         </form>
         {showCancelConfirm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">Are you sure you want to cancel?</h3>
-              <p className="mb-6 text-gray-900 font-normal">Any unsaved changes will be lost.</p>
-              <div className="flex justify-end gap-3">
+          <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-gray-100">
+              <div className="flex items-start">
+                <div className="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-br from-red-50 to-rose-100 border-2 border-red-200">
+                  <MdWarning className="w-6 h-6 text-red-500" />
+                </div>
+                <div className="ml-4 flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 leading-6">Are you sure you want to cancel?</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed mt-2">Any unsaved changes will be lost.</p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
                 <button
                   onClick={() => setShowCancelConfirm(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
+                  className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold"
                 >
                   No, Go Back
                 </button>
                 <button
                   onClick={() => { setShowCancelConfirm(false); onClose(); }}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
+                  className="px-6 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold shadow-lg"
                 >
                   Yes, Cancel
                 </button>
@@ -1420,21 +1442,28 @@ const EditItemModal = ({ isOpen, onClose, onEdit, item, selectedType }) => {
         )}
         {/* Confirmation Modal */}
         {showConfirmation && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 text-center">Confirm Changes</h3>
-              <p className="mb-6 text-gray-900">Are you sure you want to save these changes?</p>
-              <div className="flex justify-end gap-3">
+          <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-gray-100">
+              <div className="flex items-start">
+                <div className="flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-br from-blue-50 to-indigo-100 border-2 border-blue-200">
+                  <MdInfo className="w-6 h-6 text-[#2a9dab]" />
+                </div>
+                <div className="ml-4 flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 leading-6">Confirm Changes</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed mt-2">Are you sure you want to save these changes?</p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
                 <button
                   onClick={() => setShowConfirmation(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-red-100 hover:border-red-400 hover:text-red-600"
+                  className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold"
                   disabled={isSubmitting}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleConfirm}
-                  className="px-4 py-2 bg-[#2a9dab] text-white rounded-lg hover:bg-[#2a9dab]/90 focus:outline-none focus:ring-2 focus:ring-[#2a9dab] focus:ring-offset-2 transition-colors disabled:opacity-50"
+                  className="px-6 py-2.5 bg-[#2a9dab] text-white rounded-xl hover:bg-[#238a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2a9dab] transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? 'Saving...' : 'Confirm'}
@@ -1459,11 +1488,11 @@ const ViewItemModal = ({ isOpen, onClose, item, onEdit }) => {
     key => !generalFields.includes(key) && key !== 'description'
   );
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-10 w-full max-w-4xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-10 w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl border border-gray-100">
         <div className="flex justify-between items-center mb-4 flex-shrink-0">
           <h2 className="text-3xl font-bold">Item Details</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl">✕</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl transition-colors">✕</button>
         </div>
         <div className="overflow-y-auto p-2">
           <div className="mb-4">
@@ -1514,8 +1543,8 @@ const ViewItemModal = ({ isOpen, onClose, item, onEdit }) => {
           </div>
         </div>
         <div className="mt-4 flex justify-end gap-3 p-2">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium">Close</button>
-          <button onClick={() => { onEdit(item); onClose(); }}  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Edit</button>
+          <button onClick={onClose} className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold">Close</button>
+          <button onClick={() => { onEdit(item); onClose(); }}  className="px-6 py-2.5 bg-[#2a9dab] text-white rounded-xl hover:bg-[#238a91] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2a9dab] transition-all duration-200 hover:shadow-md transform hover:-translate-y-0.5 font-semibold shadow-lg">Edit</button>
         </div>
       </div>
     </div>

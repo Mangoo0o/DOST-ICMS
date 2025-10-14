@@ -50,10 +50,19 @@ const Navbar = () => {
                 switch (reservation.status.toLowerCase()) {
                   case 'in_progress':
                     message = `Your request (Ref: ${reservation.reference_number}) is now in progress.`;
+                    if (reservation.total_amount && reservation.total_amount > 0) {
+                      message += ` Total: Php ${parseFloat(reservation.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                    }
                     notificationType = 'success';
                     break;
                   case 'completed':
                     message = `Your request (Ref: ${reservation.reference_number}) has been completed!`;
+                    if (reservation.total_amount && reservation.total_amount > 0) {
+                      message += ` Total: Php ${parseFloat(reservation.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                      if (reservation.remaining_balance && reservation.remaining_balance > 0) {
+                        message += `, Balance: Php ${parseFloat(reservation.remaining_balance).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                      }
+                    }
                     notificationType = 'success';
                     break;
                   case 'rejected':
@@ -62,10 +71,19 @@ const Navbar = () => {
                     break;
                   case 'pending_payment':
                     message = `Payment is pending for your request (Ref: ${reservation.reference_number}).`;
+                    if (reservation.total_amount && reservation.total_amount > 0) {
+                      message += ` Amount: Php ${parseFloat(reservation.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                    }
                     notificationType = 'warning';
                     break;
                   case 'ready_for_pickup':
                     message = `Your request (Ref: ${reservation.reference_number}) is ready for pickup!`;
+                    if (reservation.total_amount && reservation.total_amount > 0) {
+                      message += ` Total: Php ${parseFloat(reservation.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                      if (reservation.remaining_balance && reservation.remaining_balance > 0) {
+                        message += `, Balance: Php ${parseFloat(reservation.remaining_balance).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                      }
+                    }
                     notificationType = 'success';
                     break;
                   default:
@@ -89,14 +107,20 @@ const Navbar = () => {
                 reservation.status && reservation.status.toLowerCase() === 'pending'
             );
             setNotifications(
-              filtered.map((reservation) => ({
-                id: reservation.id,
-                message: `Reservation (Ref: ${reservation.reference_number}) is pending approval.`,
-                time: new Date(reservation.date_created).toLocaleString(),
-                type: 'warning',
-                status: reservation.status,
-                referenceNumber: reservation.reference_number
-              }))
+              filtered.map((reservation) => {
+                let message = `Reservation (Ref: ${reservation.reference_number}) is pending approval.`;
+                if (reservation.total_amount && reservation.total_amount > 0) {
+                  message += ` Amount: Php ${parseFloat(reservation.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                }
+                return {
+                  id: reservation.id,
+                  message,
+                  time: new Date(reservation.date_created).toLocaleString(),
+                  type: 'warning',
+                  status: reservation.status,
+                  referenceNumber: reservation.reference_number
+                };
+              })
             );
           }
         } else {
@@ -174,9 +198,30 @@ const Navbar = () => {
       fetchNotifications();
     };
     
+    const handleIndividualCalibrationCompleted = (event) => {
+      // Add individual calibration completion notification
+      const { referenceNumber, equipmentType, message, timestamp } = event.detail;
+      
+      setNotifications(prev => {
+        const newNotification = {
+          id: `individual-calibration-${Date.now()}`,
+          message: message || `Your ${equipmentType} calibration has been completed successfully!`,
+          time: new Date(timestamp).toLocaleString(),
+          type: 'success',
+          status: 'individual_completed',
+          referenceNumber: referenceNumber,
+          equipmentType: equipmentType
+        };
+        
+        // Add to the beginning of the notifications array
+        return [newNotification, ...prev];
+      });
+    };
+    
     // Add multiple event listeners for different types of updates
     notificationService.listen('reservation-updated', handleReservationUpdate);
     notificationService.listen('calibration-completed', handleCalibrationUpdate);
+    notificationService.listen('individual-calibration-completed', handleIndividualCalibrationCompleted);
     notificationService.listen('status-updated', handleStatusUpdate);
     notificationService.listen('request-completed', handleRequestComplete);
     notificationService.listen('payment-updated', handlePaymentUpdate);
@@ -203,6 +248,7 @@ const Navbar = () => {
       // Remove notification service listeners
       notificationService.removeListener('reservation-updated', handleReservationUpdate);
       notificationService.removeListener('calibration-completed', handleCalibrationUpdate);
+      notificationService.removeListener('individual-calibration-completed', handleIndividualCalibrationCompleted);
       notificationService.removeListener('status-updated', handleStatusUpdate);
       notificationService.removeListener('request-completed', handleRequestComplete);
       notificationService.removeListener('payment-updated', handlePaymentUpdate);
@@ -322,13 +368,15 @@ const Navbar = () => {
                              {/* Status Badge */}
                              <span className={`px-2 py-1 text-xs rounded-full ${
                                notif.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                               notif.status === 'individual_completed' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200' :
                                notif.status === 'in_progress' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
                                notif.status === 'rejected' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
                                notif.status === 'pending_payment' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
                                notif.status === 'ready_for_pickup' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                                'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
                              }`}>
-                               {notif.status.replace('_', ' ').toUpperCase()}
+                               {notif.status === 'individual_completed' ? 'CALIBRATION COMPLETED' : 
+                                notif.status.replace('_', ' ').toUpperCase()}
                              </span>
                              
                              {/* Only show View Details for non-client users */}

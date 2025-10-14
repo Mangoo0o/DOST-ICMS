@@ -36,7 +36,7 @@ class EmailService {
                 throw new Exception('Database connection failed');
             }
 
-            $settingsQuery = "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('email_enabled', 'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'from_email', 'from_name')";
+            $settingsQuery = "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('email_enabled', 'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password')";
             $stmt = $db->prepare($settingsQuery);
             $stmt->execute();
             $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
@@ -49,8 +49,9 @@ class EmailService {
             $this->smtpPort = 587;
             $this->smtpUsername = $settings['smtp_username'] ?? '';
             $this->smtpPassword = $settings['smtp_password'] ?? '';
-            $this->fromEmail = $settings['from_email'] ?? '';
-            $this->fromName = $settings['from_name'] ?? 'ICMS';
+            // SMTP username automatically becomes the sender email
+            $this->fromEmail = $settings['smtp_username'] ?? '';
+            $this->fromName = 'ICMS';
         } catch (Exception $e) {
             error_log('EmailService load settings failed: ' . $e->getMessage());
             $this->isEnabled = false;
@@ -66,9 +67,7 @@ class EmailService {
             'email_enabled' => $this->isEnabled,
             'smtp_host' => $this->smtpHost,
             'smtp_port' => $this->smtpPort,
-            'smtp_username' => $this->smtpUsername,
-            'from_email' => $this->fromEmail,
-            'from_name' => $this->fromName
+            'smtp_username' => $this->smtpUsername
         ];
     }
 
@@ -109,7 +108,21 @@ class EmailService {
                 'Completed Samples' => isset($requestDetails['completed_samples']) ? (string)$requestDetails['completed_samples'] : '—',
                 'Completion Date' => date('Y-m-d'),
             ];
-            $html = $this->buildEmailTemplate('Request Completed', $intro, $details, 'Thank you for choosing DOST-PSTO ICMS.');
+            
+            // Add payment information if available
+            if (isset($requestDetails['total_amount']) && !empty($requestDetails['total_amount'])) {
+                $details['Total Amount'] = 'Php ' . number_format($requestDetails['total_amount'], 2);
+            }
+            if (isset($requestDetails['remaining_balance']) && !empty($requestDetails['remaining_balance'])) {
+                $details['Remaining Balance'] = 'Php ' . number_format($requestDetails['remaining_balance'], 2);
+            }
+            if (isset($requestDetails['payment_status']) && !empty($requestDetails['payment_status'])) {
+                $paymentStatus = ucfirst(strtolower($requestDetails['payment_status']));
+                $details['Payment Status'] = $paymentStatus;
+            }
+            
+            $footer = 'Thank you for choosing DOST-PSTO ICMS. Please settle your payment to complete the transaction.';
+            $html = $this->buildEmailTemplate('Request Completed', $intro, $details, $footer);
             $text = $this->buildPlainText('Request Completed', $intro, $details);
             $this->sendViaMailer($clientEmail, $clientName, $subject, $html, $text);
             return true;
@@ -119,32 +132,127 @@ class EmailService {
         }
     }
 
-    public function sendRequestStatusUpdateEmail($clientEmail, $clientName, $referenceNumber, $status, $additionalInfo = '') {
+    public function sendRequestAcceptanceEmail($clientEmail, $clientName, $referenceNumber, $requestDetails = []) {
         try {
             if (!$this->isEnabled) {
                 return false;
             }
             $this->assertConfig();
-            $subject = 'ICMS Request Update • ' . $referenceNumber;
-            $statusText = strtoupper(str_replace('_', ' ', (string)$status));
-            $intro = 'Your calibration request status has been updated to: ' . $statusText . '.';
+            $subject = 'Your ICMS Request Has Been Accepted • ' . $referenceNumber;
+            $intro = 'Great news! Your calibration request has been accepted and is now in progress.';
             $details = [
                 'Reference Number' => $referenceNumber,
-                'New Status' => $statusText,
+                'Status' => 'ACCEPTED - IN PROGRESS',
+                'Total Samples' => isset($requestDetails['total_samples']) ? (string)$requestDetails['total_samples'] : '—',
+                'Expected Completion' => isset($requestDetails['expected_completion']) ? $requestDetails['expected_completion'] : '—',
+                'Scheduled Date' => isset($requestDetails['scheduled_date']) ? $requestDetails['scheduled_date'] : '—',
             ];
-            if (is_array($additionalInfo)) {
-                foreach ($additionalInfo as $k => $v) {
-                    $details[ucwords(str_replace('_', ' ', (string)$k))] = is_scalar($v) ? (string)$v : json_encode($v);
+            
+            // Add attachment information if available
+            if (isset($requestDetails['has_attachment']) && $requestDetails['has_attachment']) {
+                $details['Attachment'] = 'Yes - ' . ($requestDetails['attachment_name'] ?? 'File attached');
+                if (isset($requestDetails['attachment_size'])) {
+                    $details['Attachment Size'] = $this->formatFileSize($requestDetails['attachment_size']);
                 }
-            } elseif (!empty($additionalInfo)) {
-                $details['Details'] = (string)$additionalInfo;
             }
-            $html = $this->buildEmailTemplate('Request Status Update', $intro, $details, 'You can reply to this email if you have questions.');
-            $text = $this->buildPlainText('Request Status Update', $intro, $details);
+            
+            $footer = 'Your request is now being processed. We will notify you when it is completed.';
+            $html = $this->buildEmailTemplate('Request Accepted', $intro, $details, $footer);
+            $text = $this->buildPlainText('Request Accepted', $intro, $details);
             $this->sendViaMailer($clientEmail, $clientName, $subject, $html, $text);
             return true;
         } catch (Exception $e) {
-            error_log('sendRequestStatusUpdateEmail failed: ' . $e->getMessage());
+            error_log('sendRequestAcceptanceEmail failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function sendCalibrationCompletionEmail($clientEmail, $clientName, $referenceNumber, $sampleDetails = []) {
+        try {
+            if (!$this->isEnabled) {
+                return false;
+            }
+            $this->assertConfig();
+            $subject = 'Calibration Completed • ' . $referenceNumber;
+            $intro = 'Great news! Your equipment calibration has been completed successfully.';
+            $details = [
+                'Reference Number' => $referenceNumber,
+                'Status' => 'Completed',
+                'Equipment Type' => isset($sampleDetails['equipment_type']) ? $sampleDetails['equipment_type'] : '—',
+                'Serial Number' => isset($sampleDetails['serial_number']) ? $sampleDetails['serial_number'] : '—',
+                'Calibration Date' => isset($sampleDetails['calibration_date']) ? $sampleDetails['calibration_date'] : date('Y-m-d'),
+                'Calibrated By' => isset($sampleDetails['calibrated_by']) ? $sampleDetails['calibrated_by'] : 'DOST-PSTO Engineer',
+            ];
+            
+            $footer = 'Your equipment has been successfully calibrated and is ready for use. You will receive a final notification when all equipment in your request is completed.';
+            $html = $this->buildEmailTemplate('Calibration Completed', $intro, $details, $footer);
+            $text = $this->buildPlainText('Calibration Completed', $intro, $details);
+            $this->sendViaMailer($clientEmail, $clientName, $subject, $html, $text);
+            return true;
+        } catch (Exception $e) {
+            error_log('sendCalibrationCompletionEmail failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function sendCalibrationStartEmail($clientEmail, $clientName, $referenceNumber, $sampleDetails = []) {
+        try {
+            if (!$this->isEnabled) {
+                return false;
+            }
+            $this->assertConfig();
+            $subject = 'Calibration Started • ' . $referenceNumber;
+            $intro = 'Your calibration process has begun! We are now working on your equipment.';
+            $details = [
+                'Reference Number' => $referenceNumber,
+                'Status' => 'Ongoing',
+                'Equipment Type' => isset($sampleDetails['equipment_type']) ? $sampleDetails['equipment_type'] : '—',
+                'Serial Number' => isset($sampleDetails['serial_number']) ? $sampleDetails['serial_number'] : '—',
+                'Expected Completion' => isset($sampleDetails['expected_completion']) ? $sampleDetails['expected_completion'] : '—',
+            ];
+            
+            $footer = 'Our Engineer is now calibrating your equipment. You will receive another notification when the calibration is completed.';
+            $html = $this->buildEmailTemplate('Calibration Started', $intro, $details, $footer);
+            $text = $this->buildPlainText('Calibration Started', $intro, $details);
+            $this->sendViaMailer($clientEmail, $clientName, $subject, $html, $text);
+            return true;
+        } catch (Exception $e) {
+            error_log('sendCalibrationStartEmail failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function sendRequestCreationEmail($clientEmail, $clientName, $referenceNumber, $requestDetails = []) {
+        try {
+            if (!$this->isEnabled) {
+                return false;
+            }
+            $this->assertConfig();
+            $subject = 'Your ICMS Request Has Been Submitted • ' . $referenceNumber;
+            $intro = 'Thank you! Your calibration request has been successfully submitted.';
+            $details = [
+                'Reference Number' => $referenceNumber,
+                'Status' => 'SUBMITTED - PENDING REVIEW',
+                'Total Samples' => isset($requestDetails['total_samples']) ? (string)$requestDetails['total_samples'] : '—',
+                'Expected Completion' => isset($requestDetails['expected_completion']) ? $requestDetails['expected_completion'] : '—',
+                'Scheduled Date' => isset($requestDetails['scheduled_date']) ? $requestDetails['scheduled_date'] : '—',
+            ];
+            
+            // Add attachment information if available
+            if (isset($requestDetails['has_attachment']) && $requestDetails['has_attachment']) {
+                $details['Attachment'] = 'Yes - ' . ($requestDetails['attachment_name'] ?? 'File attached');
+                if (isset($requestDetails['attachment_size'])) {
+                    $details['Attachment Size'] = $this->formatFileSize($requestDetails['attachment_size']);
+                }
+            }
+            
+            $footer = 'Your request is now under review. You will receive another notification when it is accepted and processing begins.';
+            $html = $this->buildEmailTemplate('Request Submitted', $intro, $details, $footer);
+            $text = $this->buildPlainText('Request Submitted', $intro, $details);
+            $this->sendViaMailer($clientEmail, $clientName, $subject, $html, $text);
+            return true;
+        } catch (Exception $e) {
+            error_log('sendRequestCreationEmail failed: ' . $e->getMessage());
             return false;
         }
     }
@@ -173,13 +281,37 @@ class EmailService {
         }
     }
 
+    public function sendUserWelcomeEmail($userEmail, $userName, $plainPassword) {
+        try {
+            if (!$this->isEnabled) {
+                return false;
+            }
+            $this->assertConfig();
+            $subject = 'Your ICMS User Account Details';
+            $intro = 'An administrator created an ICMS account for you.';
+            $details = [
+                'Name' => $userName,
+                'Email' => $userEmail,
+                'Temporary Password' => $plainPassword,
+            ];
+            $footer = 'For security, log in and change your password immediately.';
+            $html = $this->buildEmailTemplate('Welcome to ICMS', $intro, $details, $footer);
+            $text = $this->buildPlainText('Welcome to ICMS', $intro, $details);
+            $this->sendViaMailer($userEmail, $userName, $subject, $html, $text);
+            return true;
+        } catch (Exception $e) {
+            error_log('sendUserWelcomeEmail failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
     private function assertConfig() {
         $missing = [];
         if (empty($this->smtpHost)) { $missing[] = 'smtp_host'; }
         if (empty($this->smtpPort)) { $missing[] = 'smtp_port'; }
         if (empty($this->smtpUsername)) { $missing[] = 'smtp_username'; }
         if (empty($this->smtpPassword)) { $missing[] = 'smtp_password'; }
-        if (empty($this->fromEmail)) { $missing[] = 'from_email'; }
+        // SMTP username automatically becomes the sender email
         if (!empty($missing)) {
             throw new Exception('SMTP configuration is incomplete: missing ' . implode(', ', $missing));
         }
@@ -270,6 +402,14 @@ class EmailService {
             $lines[] = $label . ': ' . (is_scalar($value) ? (string)$value : json_encode($value));
         }
         return implode("\n", $lines);
+    }
+
+    private function formatFileSize($bytes) {
+        if ($bytes == 0) return '0 Bytes';
+        $k = 1024;
+        $sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        $i = floor(log($bytes) / log($k));
+        return round($bytes / pow($k, $i), 2) . ' ' . $sizes[$i];
     }
 }
 

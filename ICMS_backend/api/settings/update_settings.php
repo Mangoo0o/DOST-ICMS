@@ -15,7 +15,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 // Verify authentication
 require_once __DIR__ . '/../auth/verify_token.php';
-$user_data = verifyToken();
+$authResult = verifyToken();
+if (!$authResult['success']) {
+    http_response_code(401);
+    echo json_encode(['message' => $authResult['message'] || 'Unauthorized access']);
+    exit();
+}
+$user_data = $authResult['user'];
 $user_id = $user_data->id;
 
 $db = new Database();

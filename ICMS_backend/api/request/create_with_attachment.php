@@ -94,9 +94,9 @@ if (!empty($date_expected_completion) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $da
 // If client_id not provided, try to derive from JWT (client role). If not a client or no token, proceed with NULL.
 if (empty($client_id)) {
     try {
-        $userData = verifyToken();
-        if (!empty($userData) && isset($userData->role) && $userData->role === 'client' && isset($userData->id)) {
-            $client_id = $userData->id;
+        $authResult = verifyToken();
+        if ($authResult['success'] && !empty($authResult['user']) && isset($authResult['user']->role) && $authResult['user']->role === 'client' && isset($authResult['user']->id)) {
+            $client_id = $authResult['user']->id;
         }
     } catch (Exception $e) {
         // no-op; allow NULL client_id
@@ -275,6 +275,10 @@ if (empty($client_id) && (!empty($client_email) || !empty($client_name) || !empt
                     $plain = substr(str_shuffle('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'), 0, 10);
                 }
                 $toInsert['password'] = password_hash($plain, PASSWORD_BCRYPT);
+            }
+            // Force password change on first login for auto-created clients
+            if (isset($existingCols['require_password_change'])) {
+                $toInsert['require_password_change'] = 1;
             }
 
             if (!empty($toInsert)) {
@@ -619,6 +623,79 @@ error_log('[create_with_attachment] Request inserted successfully with ID: ' . $
                 // Ignore if columns do not exist; reservation remains valid
             }
         }
+    }
+
+    // Update request status to in_progress for requests with attachments
+    if (!empty($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
+        try {
+            $updateStatusQuery = "UPDATE requests SET status = 'in_progress' WHERE reference_number = ?";
+            $updateStatusStmt = $db->prepare($updateStatusQuery);
+            $updateStatusStmt->execute([$reference_number]);
+        } catch (Exception $e) {
+            error_log("Failed to update request status to in_progress: " . $e->getMessage());
+        }
+    }
+
+    // Send email notification for request creation/acceptance
+    try {
+        // Check if email notifications are enabled
+        $emailEnabledQuery = "SELECT setting_value FROM system_settings WHERE setting_key = 'email_enabled'";
+        $emailStmt = $db->prepare($emailEnabledQuery);
+        $emailStmt->execute();
+        $emailEnabled = $emailStmt->fetchColumn();
+        
+        // Get client information for email
+        $clientQuery = "SELECT first_name, last_name, email FROM clients WHERE id = ?";
+        $clientStmt = $db->prepare($clientQuery);
+        $clientStmt->execute([$client_id]);
+        $clientData = $clientStmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Send email notification if enabled and client email exists
+        error_log("Email debug - emailEnabled: " . ($emailEnabled ?: 'null') . ", clientData: " . json_encode($clientData));
+        if ($emailEnabled === 'true' && !empty($clientData['email'])) {
+            require_once __DIR__ . '/../services/EmailService.php';
+            $emailService = new EmailService();
+            $clientName = trim($clientData['first_name'] . ' ' . $clientData['last_name']);
+            
+            // Count samples for this request
+            $sampleCountQuery = "SELECT COUNT(*) FROM sample WHERE reservation_ref_no = ?";
+            $sampleCountStmt = $db->prepare($sampleCountQuery);
+            $sampleCountStmt->execute([$reference_number]);
+            $totalSamples = $sampleCountStmt->fetchColumn();
+            
+            // Prepare request details for email
+            $requestDetails = [
+                'total_samples' => $totalSamples,
+                'expected_completion' => $date_expected_completion ? date('Y-m-d', strtotime($date_expected_completion)) : 'Not set',
+                'scheduled_date' => $date_scheduled ? date('Y-m-d', strtotime($date_scheduled)) : 'Not set',
+                'has_attachment' => !empty($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK,
+                'attachment_name' => !empty($_FILES['attachment']) ? basename($_FILES['attachment']['name']) : null,
+                'attachment_size' => !empty($_FILES['attachment']) ? $_FILES['attachment']['size'] : null
+            ];
+            
+            // Send acceptance email for requests with attachments, creation email for regular requests
+            if (!empty($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
+                $emailService->sendRequestAcceptanceEmail(
+                    $clientData['email'],
+                    $clientName,
+                    $reference_number,
+                    $requestDetails
+                );
+            } else {
+                $emailService->sendRequestCreationEmail(
+                    $clientData['email'],
+                    $clientName,
+                    $reference_number,
+                    $requestDetails
+                );
+            }
+            error_log("Email sent successfully to: " . $clientData['email']);
+        } else {
+            error_log("Email not sent - emailEnabled: " . ($emailEnabled ?: 'null') . ", clientEmail: " . ($clientData['email'] ?? 'null'));
+        }
+    } catch (Exception $e) {
+        // Log email error but don't fail the request creation
+        error_log("Request email notification failed: " . $e->getMessage());
     }
 
     $db->commit();

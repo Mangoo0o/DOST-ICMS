@@ -11,6 +11,7 @@ import Request from '../pages/Request';
 import FrontRequest from '../pages/FrontRequest';
 import Reports from '../pages/Reports';
 import ClientRegistration from '../pages/ClientRegistration';
+import GuestTracking from '../pages/GuestTracking';
 import Calibration from '../pages/Calibration';
 import UncertaintyCalculation from '../pages/weighing_scaleCalculation';
 import ThermometerUncertaintyCalculator from '../pages/ThermometerUncertaintyCalculator';
@@ -24,12 +25,14 @@ import LogsPage from '../pages/Logs';
 import UserManual from '../pages/UserManual';
 import EmailSettingsPage from '../pages/EmailSettingsPage';
 import SignatoryManagement from '../components/SignatoryManagement';
+import SampleManagementPage from '../pages/SampleManagementPage';
 
 const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register-client" element={<ClientRegistration />} />
+      <Route path="/guest-track" element={<GuestTracking />} />
       <Route
         path="/dashboard"
         element={
@@ -163,6 +166,14 @@ const AppRoutes = () => {
         element={
           <AdminOrITProgrammerRoute>
             <SignatoryManagement />
+          </AdminOrITProgrammerRoute>
+        }
+      />
+      <Route
+        path="/sample-management"
+        element={
+          <AdminOrITProgrammerRoute>
+            <SampleManagementPage />
           </AdminOrITProgrammerRoute>
         }
       />

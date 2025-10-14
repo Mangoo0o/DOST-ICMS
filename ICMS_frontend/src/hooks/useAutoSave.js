@@ -59,7 +59,22 @@ export const useAutoSave = (saveFunction, data, options = {}) => {
       createBackup();
       lastSaveRef.current = Date.now();
       if (showToast) {
-        toast.success('Data saved successfully');
+        toast.success('Progress saved', {
+          position: 'top-center',
+          duration: 2000,
+          style: {
+            background: '#10B981',
+            color: '#fff',
+            padding: '16px 24px',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontWeight: '500',
+            minWidth: '300px',
+            textAlign: 'center',
+            boxShadow: '0 8px 16px rgba(16, 185, 129, 0.3)',
+            border: '1px solid rgba(255, 255, 255, 0.1)'
+          }
+        });
       }
     } catch (error) {
       console.error('Manual save failed:', error);
@@ -85,7 +100,22 @@ export const useAutoSave = (saveFunction, data, options = {}) => {
         createBackup();
         lastSaveRef.current = Date.now();
         if (showToast) {
-          toast.success('Auto-saved', { duration: 2000 });
+          toast.success('Progress saved', {
+            position: 'top-center',
+            duration: 2000,
+            style: {
+              background: '#10B981',
+              color: '#fff',
+              padding: '16px 24px',
+              borderRadius: '8px',
+              fontSize: '16px',
+              fontWeight: '500',
+              minWidth: '300px',
+              textAlign: 'center',
+              boxShadow: '0 8px 16px rgba(16, 185, 129, 0.3)',
+              border: '1px solid rgba(255, 255, 255, 0.1)'
+            }
+          });
         }
       } catch (error) {
         console.error('Auto-save failed:', error);
@@ -127,6 +157,8 @@ export const useAutoSave = (saveFunction, data, options = {}) => {
  * @param {boolean} enabled - Whether restoration is enabled
  */
 export const usePageRefreshDetection = (restoreFunction, saveKey, enabled = true) => {
+  const notificationShownRef = useRef(false);
+  
   useEffect(() => {
     if (!enabled) return;
 
@@ -136,9 +168,11 @@ export const usePageRefreshDetection = (restoreFunction, saveKey, enabled = true
         const currentData = JSON.parse(sessionStorage.getItem('current_form_data') || '{}');
         const backupData = {
           data: currentData,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          url: window.location.href // Include URL to ensure we're restoring the right page
         };
         localStorage.setItem(`backup_${saveKey}`, JSON.stringify(backupData));
+        console.log('Created backup on page unload:', backupData);
       } catch (error) {
         console.error('Failed to create backup on page unload:', error);
       }
@@ -157,13 +191,51 @@ export const usePageRefreshDetection = (restoreFunction, saveKey, enabled = true
           const timeDiff = Date.now() - parsed.timestamp;
           console.log('Backup age:', timeDiff, 'ms');
           
-          // Only restore if backup is less than 1 hour old
-          if (timeDiff < 3600000) {
+          // Check if the backup is for the current page
+          const isCurrentPage = !parsed.url || parsed.url === window.location.href;
+          
+          // Check if backup data has sampleId and if it matches current session
+          const sessionData = sessionStorage.getItem('current_form_data');
+          let isCurrentSample = true;
+          if (sessionData && parsed.data) {
+            try {
+              const sessionParsed = JSON.parse(sessionData);
+              const backupSampleId = parsed.data.sampleId;
+              const currentSampleId = sessionParsed.sampleId;
+              isCurrentSample = !backupSampleId || !currentSampleId || backupSampleId === currentSampleId;
+            } catch (e) {
+              console.log('Error parsing session data for sample comparison:', e);
+            }
+          }
+          
+          // Only restore if backup is less than 1 hour old, for current page, and for current sample
+          if (timeDiff < 3600000 && isCurrentPage && isCurrentSample) {
             console.log('Restoring data from backup:', parsed.data);
             restoreFunction(parsed.data);
-            toast.success('Data restored from backup');
+            
+            // Only show notification once per page load
+            if (!notificationShownRef.current) {
+              notificationShownRef.current = true;
+              toast.success('Data restored from backup', {
+                position: 'top-center',
+                duration: 3000,
+                style: {
+                  background: '#10B981',
+                  color: '#fff',
+                  padding: '16px 24px',
+                  borderRadius: '12px',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  minWidth: '300px',
+                  textAlign: 'center',
+                  boxShadow: '0 8px 16px rgba(16, 185, 129, 0.3)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  backdropFilter: 'blur(8px)'
+                }
+              });
+            }
           } else {
-            console.log('Backup too old, clearing it');
+            console.log('Backup too old, for different page, or different sample - clearing it');
             // Clear old backup
             localStorage.removeItem(`backup_${saveKey}`);
           }
@@ -175,12 +247,27 @@ export const usePageRefreshDetection = (restoreFunction, saveKey, enabled = true
       }
     };
 
-    // Check for page refresh on mount
+    // Check for page refresh on mount - improved detection
     const isPageRefresh = performance.navigation?.type === 1 || 
-                         (performance.getEntriesByType('navigation')[0]?.type === 'reload');
+                         (performance.getEntriesByType('navigation')[0]?.type === 'reload') ||
+                         document.referrer === '' ||
+                         (performance.navigation && performance.navigation.type === 0 && document.referrer === window.location.href);
 
-    if (isPageRefresh) {
-      handlePageLoad();
+    // Also check sessionStorage for immediate restoration
+    const hasSessionData = sessionStorage.getItem('current_form_data');
+    
+    console.log('Page refresh detection:', {
+      isPageRefresh,
+      hasSessionData: !!hasSessionData,
+      navigationType: performance.navigation?.type,
+      referrer: document.referrer
+    });
+
+    if (isPageRefresh || hasSessionData) {
+      // Small delay to ensure component is fully mounted
+      setTimeout(() => {
+        handlePageLoad();
+      }, 100);
     }
 
     // Add beforeunload listener

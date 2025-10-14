@@ -16,7 +16,13 @@ include_once '../config/db.php';
 include_once '../auth/verify_token.php';
 
 // Verify token and get user data
-$user_data = verifyToken();
+$authResult = verifyToken();
+if (!$authResult['success']) {
+    http_response_code(401);
+    echo json_encode(['message' => $authResult['message'] || 'Unauthorized access']);
+    exit();
+}
+$user_data = $authResult['user'];
 
 // Check if user has admin role
 if ($user_data->role !== 'admin') {

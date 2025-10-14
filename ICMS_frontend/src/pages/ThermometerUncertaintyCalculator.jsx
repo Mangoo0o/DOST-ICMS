@@ -166,6 +166,12 @@ const input = (props) => {
   const { handleKeyDown: navigationHandler } = useInputNavigation();
 
   const handleKeyDown = (e) => {
+    // Prevent E, e, +, - characters in number inputs to avoid scientific notation
+    if (props.type === 'number' && ['e', 'E', '+', '-'].includes(e.key)) {
+      e.preventDefault();
+      return;
+    }
+    
     navigationHandler(e, props.onKeyDown);
   };
 
@@ -213,6 +219,13 @@ function ThermometerUncertaintyCalculator() {
   const [calibrationConfirmationMessage, setCalibrationConfirmationMessage] = useState("");
   const [calibrationConfirmationType, setCalibrationConfirmationType] = useState("");
   const [showCalibrationConfirmation, setShowCalibrationConfirmation] = useState(false);
+
+  // Next-step confirmation state
+  const [showNextConfirm, setShowNextConfirm] = useState(false);
+  const [isNextSaving, setIsNextSaving] = useState(false);
+
+  // Calibration completion loading state
+  const [isCalibrationLoading, setIsCalibrationLoading] = useState(false);
 
   // User inputs
   const [us, setUs] = useState(DEFAULT_US);
@@ -1164,6 +1177,8 @@ function ThermometerUncertaintyCalculator() {
       console.error('No sampleId provided for thermometer calibration confirmation');
       return;
     }
+    
+    setIsCalibrationLoading(true);
     try {
       console.log('Calling updateSampleStatus with sampleId:', sampleId, 'status: completed');
       const response = await apiService.updateSampleStatus(sampleId, 'completed');
@@ -1185,6 +1200,8 @@ function ThermometerUncertaintyCalculator() {
       console.error('Failed to update sample status:', e);
       toast.error('Failed to update sample status: ' + (e.message || 'Unknown error'));
       return false; // Return false instead of throwing
+    } finally {
+      setIsCalibrationLoading(false);
     }
   };
 
@@ -1418,13 +1435,42 @@ function ThermometerUncertaintyCalculator() {
 
   return (
     <div className="bg-gray-100 min-h-screen p-4">
+      {/* Loading Screen Overlay for Calibration Completion */}
+      {isCalibrationLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100]">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4 text-center">
+            <div className="mb-6">
+              <svg className="animate-spin h-16 w-16 text-[#2a9dab] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Completing Calibration</h3>
+            <p className="text-gray-600 mb-4">Please wait while we finalize your calibration...</p>
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="bg-[#2a9dab] h-2 rounded-full animate-pulse" style={{
+                width: '80%',
+                animation: 'progressBar 2s ease-in-out infinite'
+              }}></div>
+            </div>
+            <style jsx>{`
+              @keyframes progressBar {
+                0% { width: 0%; }
+                50% { width: 80%; }
+                100% { width: 0%; }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
+
       <Toaster position="top-right" />
       <div className="w-full mx-auto">
         <div className="bg-white p-8 rounded-lg shadow-md w-full mb-8 border border-blue-100 relative">
           {/* Close (X) Button */}
           <button
             onClick={handleBackClick}
-            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-lg h-8 w-8 flex items-center justify-center rounded hover:bg-gray-200 transition-colors"
+            className="absolute top-4 right-4 text-gray-700 hover:text-gray-900 text-xl h-10 w-10 flex items-center justify-center rounded transition-colors font-bold"
             title="Close"
             aria-label="Close"
           >
@@ -1459,11 +1505,19 @@ function ThermometerUncertaintyCalculator() {
                         if (!us || isNaN(us) || us <= 0) {
                           toast.error('Please enter a valid Reference Standard Uncertainty value.', {
                             position: 'top-center',
-                            duration: 4000,
+                            duration: 5000,
                             style: {
                               textAlign: 'center',
-                              fontSize: '14px',
-                              fontWeight: '500'
+                              fontSize: '18px',
+                              fontWeight: '600',
+                              padding: '20px 32px',
+                              minWidth: '450px',
+                              backgroundColor: '#fef2f2',
+                              color: '#000000',
+                              border: '2px solid #fecaca',
+                              borderRadius: '12px',
+                              boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                              backdropFilter: 'blur(8px)'
                             }
                           });
                           return;
@@ -1474,11 +1528,19 @@ function ThermometerUncertaintyCalculator() {
                         if (!validRepeat) {
                           toast.error('Please fill in all repeatability values for all testpoints before proceeding.', {
                             position: 'top-center',
-                            duration: 4000,
+                            duration: 5000,
                             style: {
                               textAlign: 'center',
-                              fontSize: '14px',
-                              fontWeight: '500'
+                              fontSize: '18px',
+                              fontWeight: '600',
+                              padding: '20px 32px',
+                              minWidth: '450px',
+                              backgroundColor: '#fef2f2',
+                              color: '#000000',
+                              border: '2px solid #fecaca',
+                              borderRadius: '12px',
+                              boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                              backdropFilter: 'blur(8px)'
                             }
                           });
                           return;
@@ -1489,11 +1551,19 @@ function ThermometerUncertaintyCalculator() {
                         if (!rg || isNaN(rg) || rg <= 0) {
                           toast.error('Please enter a valid Resolution value.', {
                             position: 'top-center',
-                            duration: 4000,
+                            duration: 5000,
                             style: {
                               textAlign: 'center',
-                              fontSize: '14px',
-                              fontWeight: '500'
+                              fontSize: '18px',
+                              fontWeight: '600',
+                              padding: '20px 32px',
+                              minWidth: '450px',
+                              backgroundColor: '#fef2f2',
+                              color: '#000000',
+                              border: '2px solid #fecaca',
+                              borderRadius: '12px',
+                              boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                              backdropFilter: 'blur(8px)'
                             }
                           });
                           return;
@@ -1501,11 +1571,19 @@ function ThermometerUncertaintyCalculator() {
                         if (!rd || isNaN(rd) || rd <= 0) {
                           toast.error('Please enter a valid Readability Multiplier value.', {
                             position: 'top-center',
-                            duration: 4000,
+                            duration: 5000,
                             style: {
                               textAlign: 'center',
-                              fontSize: '14px',
-                              fontWeight: '500'
+                              fontSize: '18px',
+                              fontWeight: '600',
+                              padding: '20px 32px',
+                              minWidth: '450px',
+                              backgroundColor: '#fef2f2',
+                              color: '#000000',
+                              border: '2px solid #fecaca',
+                              borderRadius: '12px',
+                              boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                              backdropFilter: 'blur(8px)'
                             }
                           });
                           return;
@@ -1516,11 +1594,19 @@ function ThermometerUncertaintyCalculator() {
                         if (!validRepeat) {
                           toast.error('Please complete all previous steps before proceeding.', {
                             position: 'top-center',
-                            duration: 4000,
+                            duration: 5000,
                             style: {
                               textAlign: 'center',
-                              fontSize: '14px',
-                              fontWeight: '500'
+                              fontSize: '18px',
+                              fontWeight: '600',
+                              padding: '20px 32px',
+                              minWidth: '450px',
+                              backgroundColor: '#fef2f2',
+                              color: '#000000',
+                              border: '2px solid #fecaca',
+                              borderRadius: '12px',
+                              boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                              backdropFilter: 'blur(8px)'
                             }
                           });
                           return;
@@ -1528,7 +1614,7 @@ function ThermometerUncertaintyCalculator() {
                       }
                       
                       await handleAutoSave();
-                      setCurrentStep(currentStep + 1);
+                      setShowNextConfirm(true);
                     },
                     children: 'Next',
                   })
@@ -1540,11 +1626,19 @@ function ThermometerUncertaintyCalculator() {
                         if (!validRepeat) {
                           toast.error('Please complete all calibration steps before confirming.', {
                             position: 'top-center',
-                            duration: 4000,
+                            duration: 5000,
                             style: {
                               textAlign: 'center',
-                              fontSize: '14px',
-                              fontWeight: '500'
+                              fontSize: '18px',
+                              fontWeight: '600',
+                              padding: '20px 32px',
+                              minWidth: '450px',
+                              backgroundColor: '#fef2f2',
+                              color: '#000000',
+                              border: '2px solid #fecaca',
+                              borderRadius: '12px',
+                              boxShadow: '0 10px 25px rgba(220, 38, 38, 0.15), 0 4px 6px rgba(0, 0, 0, 0.1)',
+                              backdropFilter: 'blur(8px)'
                             }
                           });
                           return;
@@ -1574,6 +1668,30 @@ function ThermometerUncertaintyCalculator() {
         confirmText={showCalibrationConfirmation ? "Confirm" : "Leave Anyway"}
         cancelText={showCalibrationConfirmation ? "Cancel" : "Stay Here"}
         isLoading={isSaving}
+      />
+      
+      {/* Next Step Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showNextConfirm}
+        onClose={() => setShowNextConfirm(false)}
+        onConfirm={async () => {
+          try {
+            setIsNextSaving(true);
+            await handleAutoSave();
+            setShowNextConfirm(false);
+            setCurrentStep((s) => Math.min(5, s + 1));
+          } catch (error) {
+            toast.error('Failed to save progress.');
+          } finally {
+            setIsNextSaving(false);
+          }
+        }}
+        title="Proceed to next step?"
+        message="Your progress will be saved before moving to the next step."
+        type="info"
+        confirmText="Save & Continue"
+        cancelText="Stay Here"
+        isLoading={isNextSaving}
       />
       
     </div>

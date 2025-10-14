@@ -107,7 +107,7 @@ header('Expires: 0');
 
 // Configuration - Default values for sphygmomanometer certificates
 $DEFAULT_CONFIG = [
-    'calibrator_name' => 'MA. FERNANDA I. BANDA',
+    'calibrator_name' => '', // Will be set from database
     'calibrator_title' => 'Calibration Engineer',
     'certifier_name' => 'BERNADINE P. SUNIEGA',
     'certifier_title' => 'Technical Manager',
@@ -191,16 +191,36 @@ if (empty($input_data)) {
 }
 
 // Fetch calibrator details
-$calibrator_name = $DEFAULT_CONFIG['calibrator_name'];
+$calibrator_name = $DEFAULT_CONFIG['calibrator_name']; // Will be set from database
 $calibrator_title = $DEFAULT_CONFIG['calibrator_title'];
+
 if ($record['calibrated_by']) {
     $calibrator_stmt = $db->prepare('SELECT first_name, last_name, role FROM users WHERE id = :id');
     $calibrator_stmt->bindParam(':id', $record['calibrated_by'], PDO::PARAM_INT);
     $calibrator_stmt->execute();
     $calibrator = $calibrator_stmt->fetch(PDO::FETCH_ASSOC);
+    
     if ($calibrator) {
         $calibrator_name = strtoupper($calibrator['first_name'] . ' ' . $calibrator['last_name']);
         $calibrator_title = $calibrator['role'] ?: $DEFAULT_CONFIG['calibrator_title'];
+    } else {
+        // If the assigned user doesn't exist, get any calibration engineer
+        $eng_stmt = $db->prepare('SELECT first_name, last_name, role FROM users WHERE role = "calibration_engineers" LIMIT 1');
+        $eng_stmt->execute();
+        $eng = $eng_stmt->fetch(PDO::FETCH_ASSOC);
+        if ($eng) {
+            $calibrator_name = strtoupper($eng['first_name'] . ' ' . $eng['last_name']);
+            $calibrator_title = 'Calibration Engineer';
+        }
+    }
+} else {
+    // If no calibrator assigned, get any calibration engineer
+    $eng_stmt = $db->prepare('SELECT first_name, last_name, role FROM users WHERE role = "calibration_engineers" LIMIT 1');
+    $eng_stmt->execute();
+    $eng = $eng_stmt->fetch(PDO::FETCH_ASSOC);
+    if ($eng) {
+        $calibrator_name = strtoupper($eng['first_name'] . ' ' . $eng['last_name']);
+        $calibrator_title = 'Calibration Engineer';
     }
 }
 
@@ -493,8 +513,7 @@ $pdf->Cell(0, 5, 'IV. Test for the Rapid Exhaust Valve', 0, 1, 'L');
 $pdf->SetFont('Arial', 'B', 8);
 $pdf->SetX(19); // Align with left margin
 $pdf->Cell(35, 6, 'Applied Pressure (mmHg)', 1, 0, 'C');
-$pdf->Cell(60, 6, 'Time for the Pressure Reduction to reach ≤ 15 mmHg', 1, 0, 'C');
-$pdf->Cell(30, 6, 'Result', 1, 0, 'C');
+$pdf->Cell(90, 6, 'Time for the Pressure Reduction to reach ≤ 15 mmHg', 1, 0, 'C');
 $pdf->Cell(40, 6, 'Maximum Permissible Error', 1, 1, 'C');
 $pdf->SetFont('Arial', '', 8);
 
@@ -533,8 +552,7 @@ error_log("Final exhaustTime: " . $exhaustTime);
 error_log("Final exhaustResult: " . $exhaustResult);
 
 $pdf->Cell(35, 6, '300', 1, 0, 'C');
-$pdf->Cell(60, 6, $exhaustTime, 1, 0, 'C');
-$pdf->Cell(30, 6, $exhaustResult, 1, 0, 'C');
+$pdf->Cell(90, 6, $exhaustTime, 1, 0, 'C');
 $pdf->Cell(40, 6, '< 10 seconds', 1, 1, 'C');
 
 $pdf->Ln(5);
@@ -580,14 +598,19 @@ $pdf->MultiCell(0, 5, 'The sphygmomanometer was tested according to its normal u
 $pdf->MultiCell(0, 5, 'Testing range: from 0 mmHg to 300 mmHg positive gauge pressures.');
 $pdf->Ln(2);
 
-// Environmental conditions
+// Environmental conditions - fetch from calibration data
 $pdf->SetFont('Arial', 'B', 9);
 $pdf->Cell(0, 5, 'Environmental conditions during testing:', 0, 1, 'L');
 $pdf->SetFont('Arial', '', 9);
+
+// Get environmental data from calibration input
+$ambient_temp = $input_data['envTempStart'] ?? $input_data['ambientTemperature'] ?? '23.0';
+$relative_humidity = $input_data['envHumidityStart'] ?? $input_data['relativeHumidity'] ?? '45';
+
 $pdf->Cell(50, 5, 'Ambient Temperature (C):', 0, 0, 'L');
-$pdf->Cell(20, 5, '23.0 C', 0, 1, 'L');
+$pdf->Cell(20, 5, $ambient_temp . ' C', 0, 1, 'L');
 $pdf->Cell(50, 5, 'Relative Humidity (RH):', 0, 0, 'L');
-$pdf->Cell(20, 5, '45 %', 0, 1, 'L');
+$pdf->Cell(20, 5, $relative_humidity . ' %', 0, 1, 'L');
 $pdf->Ln(2);
 
 $pdf->MultiCell(0, 5, 'The sphygmomanometer was subjected to air leakage, rapid exhaust valve, cuff pressure indication, and hysteresis tests.');
@@ -638,12 +661,39 @@ $pdf->Ln(5);
 $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(0, 6, 'REMARKS:', 0, 1, 'L');
 $pdf->SetFont('Arial', '', 9);
+
+// Calculate average correction from calibration data
+$average_correction = 0;
+$correction_count = 0;
+
+// Calculate correction from cuff pressure indication test results
+if (isset($result_data['maxDeviation']) && is_array($result_data['maxDeviation'])) {
+    foreach ($result_data['maxDeviation'] as $deviation) {
+        if (!empty($deviation) && is_numeric($deviation)) {
+            $average_correction += floatval($deviation);
+            $correction_count++;
+        }
+    }
+}
+
+if ($correction_count > 0) {
+    $average_correction = round($average_correction / $correction_count, 1);
+} else {
+    $average_correction = 1.0; // Default fallback
+}
+
+// Generate example values based on actual correction
+$example_reading_systolic = 120;
+$example_reading_diastolic = 80;
+$corrected_systolic = $example_reading_systolic + $average_correction;
+$corrected_diastolic = $example_reading_diastolic + $average_correction;
+
 $remarks = [
     'The general condition and workmanship of the instrument are SATISFACTORY',
     'The results given in this report were obtained at the time of the test and refer only to the particular sphygmomanometer submitted under the conditions indicated. The certificate is not intended to be representative of similar items. If the unit is modified or damaged in anyway, the results may be rendered invalid and will require re-verification.',
     'The user should determine suitability of the sphygmomanometer for its intended use.',
     'No adjustments were performed on the sphygmomanometer.',
-    'The sphygmomanometer reading may be corrected by applying a correction of 1 mmHg. (e.g. Sphygmomanometer Reading: 120/80; After correction: 121/81, BASED ON THE CUFF PRESSURE INDICATION)',
+    'The sphygmomanometer reading may be corrected by applying a correction of ' . $average_correction . ' mmHg. (e.g. Sphygmomanometer Reading: ' . $example_reading_systolic . '/' . $example_reading_diastolic . '; After correction: ' . $corrected_systolic . '/' . $corrected_diastolic . ', BASED ON THE CUFF PRESSURE INDICATION)',
     'The user is obliged to have the unit recalibrated at appropriate intervals.',
     'This report shall not be reproduced except in full, without the written approval of the laboratory.'
 ];

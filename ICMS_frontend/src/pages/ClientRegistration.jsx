@@ -309,7 +309,7 @@ const ClientRegistration = () => {
                 {error}
               </div>
             )}
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form id="client-registration-form" onSubmit={handleSubmit} className="space-y-4">
               {/* Personal Information Section */}
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h3 className="text-base font-semibold text-gray-800 mb-3">Personal Information</h3>

@@ -12,7 +12,16 @@ require_once __DIR__ . '/../auth/verify_token.php';
 
 try {
     // Verify the token and get user data
-    $userData = verifyToken();
+    $authResult = verifyToken();
+    
+    // Check if token verification was successful
+    if (!$authResult['success']) {
+        http_response_code(401);
+        echo json_encode(array("message" => $authResult['message'] || "Invalid token."));
+        exit();
+    }
+    
+    $userData = $authResult['user'];
     
     // Check if the user is an admin
     if ($userData->role !== 'admin') {
@@ -54,7 +63,7 @@ try {
     $columns = $db->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_COLUMN);
     file_put_contents($logFile, "Table columns: " . implode(", ", $columns) . "\n", FILE_APPEND);
 
-    $query = "SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at DESC";
+    $query = "SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at ASC";
     file_put_contents($logFile, "Executing query: " . $query . "\n", FILE_APPEND);
     
     $stmt = $db->prepare($query);
