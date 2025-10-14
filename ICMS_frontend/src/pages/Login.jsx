@@ -205,6 +205,15 @@ const Login = () => {
 
             <div className="mt-6 text-center space-y-3">
               <div>
+                <button
+                  type="button"
+                  className={"w-full bg-gray-300 text-gray-800 py-3 px-4 rounded-lg hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-colors font-medium"}
+                  onClick={() => navigate('/guest-track')}
+                >
+                  Track Request as Guest
+                </button>
+              </div>
+              <div>
                 <span className="text-gray-600 text-sm">Don't have an account?</span>
                 <button
                   type="button"
@@ -212,15 +221,6 @@ const Login = () => {
                   onClick={() => navigate('/register-client')}
                 >
                   Register as Client
-                </button>
-              </div>
-              <div>
-                <button
-                  type="button"
-                  className="text-white bg-[#2a9dab] hover:bg-[#2a9dab]/90 text-sm font-medium border border-[#2a9dab] px-4 py-2 rounded-lg transition-colors"
-                  onClick={() => navigate('/guest-track')}
-                >
-                  Track Request as Guest
                 </button>
               </div>
             </div>

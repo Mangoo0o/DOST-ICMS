@@ -69,7 +69,7 @@ const GuestTracking = () => {
       case 'pending':
         return 'PENDING';
       case 'in_progress':
-        return 'IN PROGRESS';
+        return 'ONGOING';
       case 'completed':
         return 'COMPLETED';
       case 'cancelled':
@@ -99,7 +99,7 @@ const GuestTracking = () => {
       case 'pending':
         return 'PENDING';
       case 'in_progress':
-        return 'IN PROGRESS';
+        return 'ONGOING';
       case 'completed':
         return 'COMPLETED';
       case 'cancelled':
@@ -116,11 +116,11 @@ const GuestTracking = () => {
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden h-full overflow-y-auto">
           {/* Header */}
           <div className="px-8 pt-10 pb-6 text-center bg-white">
-            <div className="flex items-center justify-start gap-3 mb-4 pl-6">
+            <div className="flex items-center justify-center gap-3 mb-4">
               <div className="bg-white rounded-full p-3 shadow-lg ring-2 ring-white/20 flex-shrink-0">
                 <img src={dostLogo} alt="DOST Logo" className="w-12 h-12" />
               </div>
-              <div className="text-left">
+              <div className="text-center">
                 <h1 className="text-lg md:text-xl font-bold text-gray-800 leading-tight tracking-wide whitespace-nowrap">Integrated Calibration</h1>
                 <h2 className="text-lg md:text-xl font-bold text-gray-800 leading-tight tracking-wide">Management System</h2>
               </div>

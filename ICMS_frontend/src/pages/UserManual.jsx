@@ -1995,8 +1995,8 @@ const UserManual = () => {
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                       <h5 className="font-semibold text-yellow-800 mb-2">Status Changes</h5>
                       <ul className="list-disc list-inside text-sm space-y-1">
-                        <li><strong>Pending → In Progress:</strong> When calibration work begins</li>
-                        <li><strong>In Progress → Completed:</strong> When calibration is finished</li>
+                        <li><strong>Pending → Ongoing:</strong> When calibration work begins</li>
+                        <li><strong>Ongoing → Completed:</strong> When calibration is finished</li>
                         <li><strong>Any → Cancelled:</strong> When request is cancelled</li>
                       </ul>
                     </div>
@@ -2753,9 +2753,9 @@ const UserManual = () => {
             </ol>
 
                     <h5 className="font-semibold text-gray-700 mb-2">Managing Request Status</h5>
-                    <p className="text-sm text-gray-600 mb-2"><strong>Status Flow:</strong> Pending → In Progress → Completed/Cancelled</p>
+                    <p className="text-sm text-gray-600 mb-2"><strong>Status Flow:</strong> Pending → Ongoing → Completed/Cancelled</p>
                     <ul className="list-disc list-inside space-y-1 text-sm">
-                      <li><strong>In Progress:</strong> Can assign engineer, add notes</li>
+                      <li><strong>Ongoing:</strong> Can assign engineer, add notes</li>
                       <li><strong>Completed:</strong> Can generate certificates, process payments</li>
                       <li><strong>Cancelled:</strong> Must provide cancellation reason</li>
               </ul>

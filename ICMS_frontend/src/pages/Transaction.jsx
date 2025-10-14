@@ -26,7 +26,7 @@ const getStatusBadge = (status) => {
 const getStatusText = (status) => {
   if (!status) return '';
   switch (status.toLowerCase()) {
-    case 'in_progress': return 'In Progress';
+    case 'in_progress': return 'Ongoing';
     case 'pending': return 'Pending';
     case 'completed': return 'Completed';
     case 'cancelled': return 'Cancelled';

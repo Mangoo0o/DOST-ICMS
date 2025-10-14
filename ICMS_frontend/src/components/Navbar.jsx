@@ -101,27 +101,47 @@ const Navbar = () => {
               })
             );
           } else {
-            // Employees: show all pending reservations
-            filtered = response.data.records.filter(
-              (reservation) =>
-                reservation.status && reservation.status.toLowerCase() === 'pending'
-            );
-            setNotifications(
-              filtered.map((reservation) => {
+            // Employees: show pending approvals + overdue expected completion alerts
+            const records = response.data.records || [];
+
+            const pendingList = records
+              .filter((reservation) => reservation.status && reservation.status.toLowerCase() === 'pending')
+              .map((reservation) => {
                 let message = `Reservation (Ref: ${reservation.reference_number}) is pending approval.`;
                 if (reservation.total_amount && reservation.total_amount > 0) {
                   message += ` Amount: Php ${parseFloat(reservation.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
                 }
                 return {
-                  id: reservation.id,
+                  id: `pending-${reservation.id}`,
                   message,
                   time: new Date(reservation.date_created).toLocaleString(),
                   type: 'warning',
                   status: reservation.status,
                   referenceNumber: reservation.reference_number
                 };
+              });
+
+            const overdueList = records
+              .filter((reservation) => {
+                const status = String(reservation.status || '').toLowerCase();
+                if (status === 'completed' || !reservation.date_expected_completion) return false;
+                const today = new Date();
+                const expected = new Date(reservation.date_expected_completion);
+                return expected < new Date(today.getFullYear(), today.getMonth(), today.getDate());
               })
-            );
+              .map((reservation) => {
+                const expectedStr = new Date(reservation.date_expected_completion).toLocaleDateString();
+                return {
+                  id: `overdue-${reservation.id}`,
+                  message: `Past due: Ref ${reservation.reference_number} (was due ${expectedStr}).`,
+                  time: new Date().toLocaleString(),
+                  type: 'error',
+                  status: 'overdue',
+                  referenceNumber: reservation.reference_number
+                };
+              });
+
+            setNotifications([...overdueList, ...pendingList]);
           }
         } else {
           setNotifications([]);
@@ -366,17 +386,18 @@ const Navbar = () => {
                           
                            <div className="flex items-center gap-2">
                              {/* Status Badge */}
-                             <span className={`px-2 py-1 text-xs rounded-full ${
+                              <span className={`px-2 py-1 text-xs rounded-full ${
                                notif.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                                notif.status === 'individual_completed' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200' :
                                notif.status === 'in_progress' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                                notif.status === 'overdue' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
                                notif.status === 'rejected' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
                                notif.status === 'pending_payment' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
                                notif.status === 'ready_for_pickup' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                                'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
                              }`}>
-                               {notif.status === 'individual_completed' ? 'CALIBRATION COMPLETED' : 
-                                notif.status.replace('_', ' ').toUpperCase()}
+                                {notif.status === 'individual_completed' ? 'CALIBRATION COMPLETED' : 
+                                 (notif.status === 'overdue' ? 'OVERDUE' : notif.status.replace('_', ' ').toUpperCase())}
                              </span>
                              
                              {/* Only show View Details for non-client users */}

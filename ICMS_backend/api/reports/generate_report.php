@@ -48,6 +48,8 @@ $report_type = isset($_GET['type']) ? $_GET['type'] : '';
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : null;
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : null;
 $location = isset($_GET['location']) ? $_GET['location'] : null;
+// Optional sample status filter: 'all' | 'in_progress' | 'completed'
+$sample_status = isset($_GET['sample_status']) ? $_GET['sample_status'] : 'all';
 // Optional section toggles (default to include when not provided)
 $include_samples = isset($_GET['include_samples']) ? ($_GET['include_samples'] === '1' || $_GET['include_samples'] === 'true') : true;
 $include_clients_by_city = isset($_GET['include_clients_by_city']) ? ($_GET['include_clients_by_city'] === '1' || $_GET['include_clients_by_city'] === 'true') : true;
@@ -85,8 +87,8 @@ try {
             logReportGenerated($db, $auth_user->id ?? null, 'all_requests', ['start_date' => $start_date, 'end_date' => $end_date, 'location' => $location]);
             break;
         case 'pdf_report':
-            logReportGenerated($db, $auth_user->id ?? null, 'pdf_report', ['start_date' => $start_date, 'end_date' => $end_date, 'location' => $location, 'include_samples' => $include_samples, 'include_clients_by_city' => $include_clients_by_city, 'include_inventory' => $include_inventory, 'mode' => 'preview']);
-            generatePDFPreview($db, $start_date, $end_date, $location, $include_samples, $include_clients_by_city, $include_inventory);
+            logReportGenerated($db, $auth_user->id ?? null, 'pdf_report', ['start_date' => $start_date, 'end_date' => $end_date, 'location' => $location, 'sample_status' => $sample_status, 'include_samples' => $include_samples, 'include_clients_by_city' => $include_clients_by_city, 'include_inventory' => $include_inventory, 'mode' => 'preview']);
+            generatePDFPreview($db, $start_date, $end_date, $location, $include_samples, $include_clients_by_city, $include_inventory, $sample_status);
             exit(); // PDF generation will output directly
         case 'test_pdf':
             logReportGenerated($db, $auth_user->id ?? null, 'test_pdf', []);
@@ -313,7 +315,7 @@ function generateCalibrationSummary($db, $start_date, $end_date, $location) {
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-function generateRequestSamplesReport($db, $start_date, $end_date, $location) {
+function generateRequestSamplesReport($db, $start_date, $end_date, $location, $sample_status = 'all') {
     // Filter requests by date_created and optional location
     $reqWhere = "";
     if ($start_date && $end_date) {
@@ -325,6 +327,16 @@ function generateRequestSamplesReport($db, $start_date, $end_date, $location) {
     }
     $locationFilter = $location && $location !== 'all' ? " AND r.address LIKE :location" : "";
     $likeLocation = ($location && $location !== 'all') ? ("%" . $location . "%") : null;
+
+    $statusFilter = '';
+    if ($sample_status && $sample_status !== 'all') {
+        if ($sample_status === 'in_progress') {
+            // Treat both 'in_progress' and 'pending' as ongoing
+            $statusFilter = " AND (s.status = 'in_progress' OR s.status = 'pending')";
+        } elseif ($sample_status === 'completed') {
+            $statusFilter = " AND s.status = 'completed'";
+        }
+    }
 
     $query = "SELECT 
                 r.id AS request_id,
@@ -341,7 +353,7 @@ function generateRequestSamplesReport($db, $start_date, $end_date, $location) {
               LEFT JOIN clients c ON r.client_id = c.id
               LEFT JOIN sample s ON r.reference_number = s.reservation_ref_no
               LEFT JOIN calibration_records cr ON s.id = cr.sample_id
-              WHERE 1=1 $reqWhere $locationFilter
+              WHERE 1=1 $reqWhere $locationFilter$statusFilter
               ORDER BY r.date_created DESC, r.id DESC";
 
     $stmt = $db->prepare($query);
@@ -977,8 +989,8 @@ function generateTestPDFPreview() {
     }
 }
 
-function generatePDFPreview($db, $start_date, $end_date, $location, $include_samples = true, $include_clients_by_city = true, $include_inventory = true) {
-    error_log("generatePDFPreview() called with params: start_date=$start_date, end_date=$end_date, location=$location, include_samples=" . ($include_samples ? '1' : '0') . ", include_clients_by_city=" . ($include_clients_by_city ? '1' : '0') . ", include_inventory=" . ($include_inventory ? '1' : '0'));
+function generatePDFPreview($db, $start_date, $end_date, $location, $include_samples = true, $include_clients_by_city = true, $include_inventory = true, $sample_status = 'all') {
+    error_log("generatePDFPreview() called with params: start_date=$start_date, end_date=$end_date, location=$location, sample_status=$sample_status, include_samples=" . ($include_samples ? '1' : '0') . ", include_clients_by_city=" . ($include_clients_by_city ? '1' : '0') . ", include_inventory=" . ($include_inventory ? '1' : '0'));
     
     try {
         require_once __DIR__ . '/../../vendor/setasign/fpdf/fpdf.php';
@@ -1130,8 +1142,8 @@ function generatePDFPreview($db, $start_date, $end_date, $location, $include_sam
             error_log("PDF Rendering - Array count: " . count($reports['all_requests']));
             error_log("PDF Rendering - Array empty check: " . (empty($reports['all_requests']) ? 'TRUE' : 'FALSE'));
             
-            // Replace all_requests with richer request+sample rows
-            $requestsWithSamples = generateRequestSamplesReport($db, $start_date, $end_date, $location);
+            // Replace all_requests with richer request+sample rows, filtered by sample status if provided
+            $requestsWithSamples = generateRequestSamplesReport($db, $start_date, $end_date, $location, $sample_status);
             if (!empty($requestsWithSamples)) {
             error_log("PDF Rendering - Found " . count($reports['all_requests']) . " requests, rendering table");
             $pdf->SetFont('Arial', 'B', 14);

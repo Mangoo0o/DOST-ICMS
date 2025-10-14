@@ -109607,3 +109607,61 @@ Found 2 users
 Response data: {"records":[{"id":23,"fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":26,"fullname":"wakin ANGELO","email":"angelojonesjaramilla@gmail.com","userlvl":"admin","status":true}]}
 Request completed at 2025-10-12 09:11:46
 
+Request started at 2025-10-14 16:18:28
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, require_password_change, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at ASC
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 26
+    [first_name] => wakin
+    [last_name] => ANGELO
+    [email] => angelojonesjaramilla@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 2 users
+Response data: {"records":[{"id":"23","fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":"26","fullname":"wakin ANGELO","email":"angelojonesjaramilla@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-10-14 16:18:28
+
+Request started at 2025-10-14 16:18:28
+Database connection successful
+Table exists: Yes
+Table columns: id, first_name, last_name, email, password, role, status, require_password_change, created_at, updated_at
+Executing query: SELECT id, first_name, last_name, email, role, status FROM users ORDER BY created_at ASC
+Raw row data: Array
+(
+    [id] => 23
+    [first_name] => princess
+    [last_name] => talisay
+    [email] => princess@gmail.com
+    [role] => cashier
+    [status] => 1
+)
+
+Raw row data: Array
+(
+    [id] => 26
+    [first_name] => wakin
+    [last_name] => ANGELO
+    [email] => angelojonesjaramilla@gmail.com
+    [role] => admin
+    [status] => 1
+)
+
+Found 2 users
+Response data: {"records":[{"id":"23","fullname":"princess talisay","email":"princess@gmail.com","userlvl":"cashier","status":true},{"id":"26","fullname":"wakin ANGELO","email":"angelojonesjaramilla@gmail.com","userlvl":"admin","status":true}]}
+Request completed at 2025-10-14 16:18:28
+

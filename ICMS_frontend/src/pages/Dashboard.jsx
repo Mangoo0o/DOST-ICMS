@@ -34,6 +34,8 @@ const Dashboard = () => {
   const [requestEvents, setRequestEvents] = useState([]); // { date: 'YYYY-MM-DD', type: 'scheduled|in_progress|completed|expected' }
   const [requestsByDate, setRequestsByDate] = useState({}); // { 'YYYY-MM-DD': [{ref, due, status}] }
   const [hoveredDayKey, setHoveredDayKey] = useState(null);
+  const [dashboardStart, setDashboardStart] = useState('');
+  const [dashboardEnd, setDashboardEnd] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -50,7 +52,16 @@ const Dashboard = () => {
             // Count calibrated equipment based on is_calibrated field
             if (Array.isArray(t.sample)) {
               t.sample.forEach(eq => {
-                if (eq.is_calibrated === 1 || eq.is_calibrated === true) {
+                const created = t.date_created ? new Date(t.date_created) : null;
+                const inRange = (() => {
+                  if (!dashboardStart && !dashboardEnd) return true;
+                  if (!created) return false;
+                  const d = new Date(created.getFullYear(), created.getMonth(), created.getDate());
+                  const startOk = dashboardStart ? d >= new Date(dashboardStart) : true;
+                  const endOk = dashboardEnd ? d <= new Date(dashboardEnd) : true;
+                  return startOk && endOk;
+                })();
+                if (inRange && (eq.is_calibrated === 1 || eq.is_calibrated === true)) {
                   calibratedCount++;
                 }
               });
@@ -58,11 +69,32 @@ const Dashboard = () => {
             // Sum all payments for this transaction
             if (Array.isArray(t.payments)) {
               t.payments.forEach(p => {
-                totalPayments += parseFloat(p.amount) || 0;
+                const paidAt = p.date_paid ? new Date(p.date_paid) : (t.date_created ? new Date(t.date_created) : null);
+                const inRange = (() => {
+                  if (!dashboardStart && !dashboardEnd) return true;
+                  if (!paidAt) return false;
+                  const d = new Date(paidAt.getFullYear(), paidAt.getMonth(), paidAt.getDate());
+                  const startOk = dashboardStart ? d >= new Date(dashboardStart) : true;
+                  const endOk = dashboardEnd ? d <= new Date(dashboardEnd) : true;
+                  return startOk && endOk;
+                })();
+                if (inRange) totalPayments += parseFloat(p.amount) || 0;
               });
             }
             // Remove old transaction-level discount logic
           });
+          // Apply date range to requests count as well
+          if (dashboardStart || dashboardEnd) {
+            const filtered = data.records.filter(t => {
+              const created = t.date_created ? new Date(t.date_created) : null;
+              if (!created) return false;
+              const d = new Date(created.getFullYear(), created.getMonth(), created.getDate());
+              const startOk = dashboardStart ? d >= new Date(dashboardStart) : true;
+              const endOk = dashboardEnd ? d <= new Date(dashboardEnd) : true;
+              return startOk && endOk;
+            });
+            requestsCount = filtered.length;
+          }
           setTotalCalibrated(calibratedCount);
           setTotalRequests(requestsCount);
           setTotalSales(totalPayments);
@@ -75,7 +107,7 @@ const Dashboard = () => {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [dashboardStart, dashboardEnd]);
 
   useEffect(() => {
     const fetchClients = async () => {
@@ -242,6 +274,30 @@ const Dashboard = () => {
 
   return (
     <div className="parent min-h-screen p-6">
+      {/* Date Range Filter above cards (visually over Total Clients card area) */}
+      <div className="col-span-3 md:col-span-3 mb-4 flex items-center gap-2 justify-end">
+        <input
+          type="date"
+          value={dashboardStart}
+          onChange={(e) => setDashboardStart(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <span className="text-gray-500">to</span>
+        <input
+          type="date"
+          value={dashboardEnd}
+          onChange={(e) => setDashboardEnd(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        {(dashboardStart || dashboardEnd) && (
+          <button
+            onClick={() => { setDashboardStart(''); setDashboardEnd(''); }}
+            className="px-3 py-2 text-sm rounded border bg-gray-50 hover:bg-gray-100"
+          >
+            Clear
+          </button>
+        )}
+      </div>
       <div className="div1">
         {/* Total Calibrated Items */}
         <div className="bg-[#e3eafe] rounded-xl p-3 min-h-[100px] max-h-[100px] shadow flex flex-col h-full relative overflow-hidden justify-center">

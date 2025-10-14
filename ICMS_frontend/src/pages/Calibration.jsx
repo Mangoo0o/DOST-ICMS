@@ -128,6 +128,21 @@ function daysBetween(date1, date2) {
   return Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
 }
 
+// Helper to optionally focus a specific reference from URL (used by notifications)
+function useFocusReferenceFromQuery() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) {
+      // Optionally, we could set a local search/filter state; for now, just ensure page is visible
+      // Leave hook placeholder for future enhancements like auto-expanding the request row
+    }
+    // Provide a cleanup that removes the ref param when navigating away if needed
+    return () => {};
+  }, [navigate]);
+}
+
 function getProgress(scheduled, expected) {
   const now = new Date();
   const start = new Date(scheduled);
@@ -526,7 +541,8 @@ const Calibration = () => {
   const [loading, setLoading] = useState(true);
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedStartDate, setSelectedStartDate] = useState(null);
+  const [selectedEndDate, setSelectedEndDate] = useState(null);
   const [isViewCalibModalOpen, setIsViewCalibModalOpen] = useState(false);
   const [selectedSampleId, setSelectedSampleId] = useState(null);
   const [calibRecord, setCalibRecord] = useState(null);
@@ -543,7 +559,8 @@ const Calibration = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(9);
   
-
+  // Optional focusing via ?ref= query for notifications
+  useFocusReferenceFromQuery();
 
   const fetchReservations = async (forceRefresh = false) => {
     setLoading(true);
@@ -557,6 +574,19 @@ const Calibration = () => {
           r.status === 'in_progress' || r.status === 'completed'
         );
         setReservations(accepted);
+
+        // If navigated with ?ref=, auto-open Request Details for that reservation
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const ref = params.get('ref');
+          if (ref) {
+            const match = accepted.find(r => String(r.reference_number).toLowerCase() === String(ref).toLowerCase());
+            if (match) {
+              setSelectedReservation(match);
+              setIsViewCalibModalOpen(true);
+            }
+          }
+        } catch {}
 
           // Fetch calibration progress for each reservation's sample
           const progressObj = {};
@@ -634,19 +664,33 @@ const Calibration = () => {
     };
   }, []);
 
-  // Reset to first page when search or date filter changes
+  // Reset to first page when search or date range changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedDate]);
+  }, [searchTerm, selectedStartDate, selectedEndDate]);
 
-  // Filter reservations based on search and date
+  // Filter reservations based on search and date range
   const filteredReservations = reservations.filter(r => {
     const clientName = (r.client_name || '').toLowerCase();
     const referenceNumber = String(r.reference_number || '').toLowerCase();
     const term = (searchTerm || '').toLowerCase();
     const matchesSearch = clientName.includes(term) || referenceNumber.includes(term);
-    const matchesDate = !selectedDate || (r.date_scheduled && new Date(r.date_scheduled).toDateString() === selectedDate.toDateString());
-    return matchesSearch && matchesDate;
+    let matchesDateRange = true;
+    const sched = r.date_scheduled ? new Date(r.date_scheduled) : null;
+    if (sched) {
+      const dayOnly = new Date(sched.getFullYear(), sched.getMonth(), sched.getDate());
+      if (selectedStartDate) {
+        const start = new Date(selectedStartDate.getFullYear(), selectedStartDate.getMonth(), selectedStartDate.getDate());
+        if (dayOnly < start) matchesDateRange = false;
+      }
+      if (selectedEndDate) {
+        const end = new Date(selectedEndDate.getFullYear(), selectedEndDate.getMonth(), selectedEndDate.getDate());
+        if (dayOnly > end) matchesDateRange = false;
+      }
+    } else if (selectedStartDate || selectedEndDate) {
+      matchesDateRange = false;
+    }
+    return matchesSearch && matchesDateRange;
   });
 
   // Calculate pagination
@@ -738,9 +782,42 @@ const Calibration = () => {
             </div>
           )}
           
-          {/* Search Bar */}
+          {/* Search and Filters */}
           {!selectedReservation ? (
             <>
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <div className="relative">
+                  <input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search by reference # or client name"
+                    className="w-72 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2a9dab]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2a9dab]"
+                    value={selectedStartDate ? new Date(selectedStartDate).toISOString().slice(0,10) : ''}
+                    onChange={(e) => setSelectedStartDate(e.target.value ? new Date(e.target.value) : null)}
+                  />
+                  <span className="text-gray-500">to</span>
+                  <input
+                    type="date"
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2a9dab]"
+                    value={selectedEndDate ? new Date(selectedEndDate).toISOString().slice(0,10) : ''}
+                    onChange={(e) => setSelectedEndDate(e.target.value ? new Date(e.target.value) : null)}
+                  />
+                </div>
+                {(searchTerm || selectedStartDate || selectedEndDate) && (
+                  <button
+                    onClick={() => { setSearchTerm(''); setSelectedStartDate(null); setSelectedEndDate(null); }}
+                    className="ml-auto px-3 py-2 text-sm rounded border bg-gray-50 hover:bg-gray-100"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
               <div className="overflow-x-auto scrollbar-hide">
                 <table className="min-w-full bg-white border border-gray-200 rounded-lg">
                   <thead className="bg-gray-50">
@@ -2123,8 +2200,8 @@ function ReservationDetailsCard({ reservation, onBack, onViewDetails, sampleId }
 function getStatusText(status) {
   if (!status) return '';
   switch (status.toLowerCase()) {
-    case 'in_progress': return 'In Progress';
-    case 'pending': return 'Pending';
+    case 'in_progress': return 'Ongoing';
+    case 'pending': return 'Ongoing';
     case 'completed': return 'Completed';
     case 'cancelled': return 'Cancelled';
     default: return status.charAt(0).toUpperCase() + status.slice(1);

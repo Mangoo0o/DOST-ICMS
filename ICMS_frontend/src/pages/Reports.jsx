@@ -17,6 +17,7 @@ const Reports = () => {
   const [includeSamples, setIncludeSamples] = useState(true);
   const [includeClientsByCity, setIncludeClientsByCity] = useState(true);
   const [includeInventory, setIncludeInventory] = useState(true);
+  const [statusFilter, setStatusFilter] = useState('all'); // all | in_progress | completed
 
   const resetFilters = () => {
     const today = new Date();
@@ -28,6 +29,7 @@ const Reports = () => {
     setIncludeSamples(true);
     setIncludeClientsByCity(true);
     setIncludeInventory(true);
+    setStatusFilter('all');
   };
 
   // Set default date range to current month
@@ -70,7 +72,8 @@ const Reports = () => {
         type: 'pdf_report',
         start_date: startDate,
         end_date: endDate,
-        location: location
+        location: location,
+        sample_status: statusFilter
       });
 
       // Test database connection first
@@ -90,7 +93,7 @@ const Reports = () => {
         
         if (testResponse.data.count_query_result?.total > 0) {
           // Generate PDF report preview
-          const reportUrl = `${API_BASE_URL}/api/reports/generate_report.php?type=pdf_report&start_date=${startDate}&end_date=${endDate}&location=${location}` +
+          const reportUrl = `${API_BASE_URL}/api/reports/generate_report.php?type=pdf_report&start_date=${startDate}&end_date=${endDate}&location=${location}&sample_status=${statusFilter}` +
             `&include_samples=${includeSamples ? '1' : '0'}` +
             `&include_clients_by_city=${includeClientsByCity ? '1' : '0'}` +
             `&include_inventory=${includeInventory ? '1' : '0'}`;
@@ -154,7 +157,7 @@ const Reports = () => {
           <h2 className="text-sm font-semibold text-gray-800 tracking-wide">Filters</h2>
           <span className="text-xs text-gray-500">Use these to narrow your report</span>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           {/* Start Date */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
@@ -198,6 +201,22 @@ const Reports = () => {
                 ))}
               </select>
               <MdLocationOn className="absolute right-3 top-2.5 text-gray-400" />
+            </div>
+          </div>
+
+          {/* Sample Status Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Sample Status</label>
+            <div className="relative">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Samples</option>
+                <option value="in_progress">Ongoing Only</option>
+                <option value="completed">Completed Only</option>
+              </select>
             </div>
           </div>
         </div>
